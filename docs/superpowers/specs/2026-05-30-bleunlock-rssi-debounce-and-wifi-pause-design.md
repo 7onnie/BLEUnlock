@@ -69,7 +69,7 @@ func updateMonitoredPeripheral(_ rssi: Int) {
         print("Device is close")
         presence = true
         delegate?.updatePresence(presence: presence, reason: "close")
-        latestRSSIs.removeAll()                              // ③ warm-up for next cycle
+        // NOTE: the original `latestRSSIs.removeAll()` is intentionally removed — see below.
     }
 
     if estimatedRSSI >= (lockRSSI == LOCK_DISABLED ? unlockRSSI : lockRSSI) {
@@ -85,15 +85,27 @@ func updateMonitoredPeripheral(_ rssi: Int) {
 - New property: `var unlockMinSamples = 3`. Must satisfy `unlockMinSamples <= latestN`
   (currently 5). Default 3 ≈ 4–6 s latency in active mode (~2 s/sample); 2 is the
   acceptable lower bound if unlock feels sluggish.
-- The unlock block's `latestRSSIs.removeAll()` now runs *after* `getEstimatedRSSI`
-  (which appended the current sample). The local `estimatedRSSI` is already captured, so
-  the subsequent lock check is unaffected.
-- The `removeAll()` after a successful unlock provides a natural warm-up: the next
-  unlock cycle must re-accumulate `unlockMinSamples` fresh samples, killing bounce.
+- **The original `latestRSSIs.removeAll()` (current `BLE.swift:241`) is removed**
+  (design-review **required change**). In the current code it runs *before*
+  `getEstimatedRSSI`, so the sample right after an unlock yields
+  `estimatedRSSI` = a single raw value, which then drives the **lock** decision
+  (proximity-timer start/cancel). A single noisy sample could thus prematurely start or
+  erroneously cancel the lock timer. Keeping the rolling buffer intact means
+  `estimatedRSSI` stays smoothed for *both* the lock and unlock decisions.
+- **Spike resistance now comes from the moving average itself**, which is sufficient:
+  with `latestN = 5`, a lone spike of −40 among four −85 samples yields a mean of −76,
+  below the default unlock threshold of −60 → no false unlock. The `unlockMinSamples`
+  count gate is belt-and-suspenders for the cold-start warm-up (buffer not yet filled).
+- **Anti-bounce** is provided by the existing hysteresis dead-band (lockRSSI < unlockRSSI)
+  plus the moving average — not by clearing the buffer. Removing `removeAll()` does not
+  reintroduce oscillation.
 
 ### Edge cases / non-issues (design-review consensus)
-- **Reordering is safe and beneficial** — `removeAll()` only fires on the unlock
-  transition; the buffer always refills under normal advertising/active polling.
+- **Reordering is safe and beneficial** — `getEstimatedRSSI` now runs first, so the
+  current call's lock decision uses the full smoothed buffer.
+- **Without `removeAll()` the count gate is mostly a no-op in steady state** (buffer
+  stays at `latestN`); it only bites at cold start / after the buffer is otherwise
+  empty. That is acceptable — the moving average carries the spike resistance.
 - **Sporadic packets** — active mode polls `readRSSI` every ~2 s, so the buffer reaches
   3 samples within seconds; if it genuinely cannot, the signal is unreliable and *not*
   unlocking is correct.
@@ -102,6 +114,9 @@ func updateMonitoredPeripheral(_ rssi: Int) {
   return → false positive on return).
 - **`unlockRSSI == UNLOCK_DISABLED`** — `AppDelegate.updatePresence` already guards the
   unlock branch on this; the sample gate is harmless here.
+- **Concurrency** — `latestRSSIs` is only ever touched inside `updateMonitoredPeripheral`
+  / `getEstimatedRSSI`, both on the CoreBluetooth delegate queue (the main queue, since
+  `CBCentralManager(delegate:queue:nil)`). No locking needed.
 
 ### Testing
 - Unit-testable core: factor the unlock decision (`shouldUnlock(estimatedRSSI:, count:)`)
@@ -128,18 +143,44 @@ neither auto-lock nor auto-unlock. The network is identified **permission-free**
 Via `Process` (the app is **not** sandboxed — `BLEUnlock.entitlements` has no
 `app-sandbox` key):
 1. `/sbin/route -n get default` → parse `gateway:` (IPv4 default gateway IP).
-2. `/sbin/ping -c 1 -t 1 <gatewayIP>` → prime the ARP cache (gateway MAC may be absent
-   right after a network switch). Fire-and-forget with short timeout.
-3. `/usr/sbin/arp -n <gatewayIP>` → parse `at <MAC>` → normalized gateway MAC.
+2. `/sbin/ping -c 2 -t 1 <gatewayIP>` → prime the ARP cache (gateway MAC may be absent
+   right after a network switch). Two probes for reliability; short per-probe timeout.
+3. `/usr/sbin/arp -n <gatewayIP>` → parse `at <MAC>` → normalized gateway MAC. If the
+   entry is missing, retry up to 2 more times spaced ~150 ms (ARP may settle just after
+   `ping` returns).
 
-Return `nil` on any failure (unreachable gateway, captive portal, IPv6-only). `nil`
-means "not a known home network" → **stay active** (safe default).
+`resolveGatewayMAC()` returns the normalized MAC, or `nil` if it cannot be determined
+(unreachable gateway, captive portal, IPv6-only). The handling of `nil` is **not** an
+unconditional fall-back to active — see B3a (sticky state).
 
-### B2. Change detection
+### B2. Change detection & threading (required)
 `SCDynamicStore` (SystemConfiguration) watching `State:/Network/Global/IPv4`
 (and `…/IPv6`). Fires on Wi-Fi join/leave, Ethernet plug/unplug, and VPN
 connect/disconnect — i.e. every event that changes the default route. No polling, no
-CoreWLAN. On each notification, re-resolve the gateway MAC and recompute pause state.
+CoreWLAN.
+
+**Threading (design-review required change):** the `SCDynamicStore` callback runs on the
+main run loop, and the `route`/`ping`/`arp` `Process` calls block for up to a few
+seconds. They **must not** run on the main queue (UI beachball). On each notification:
+1. The main-queue callback dispatches resolution onto a dedicated **serial background
+   queue** (`DispatchQueue(label: "…networkmonitor", qos: .utility)`).
+2. That queue runs `resolveGatewayMAC()` and computes the new pause state.
+3. The result is dispatched **back to the main queue** to write `pausedByNetwork` and
+   update the menu. `pausedByNetwork` is therefore only ever written/read on the main
+   queue.
+
+A new notification arriving while resolution is in flight simply enqueues another job on
+the serial queue (latest result wins); no cancellation needed.
+
+### B3a. Sticky pause state (required)
+Do **not** flip to active on a transient resolution failure. Track the last
+*successfully resolved* gateway MAC and the last pause state:
+- **MAC resolved** → `pausedByNetwork = (MAC ∈ allowlist)`.
+- **MAC unresolved (`nil`)** → **keep the previous `pausedByNetwork`** (sticky) and let
+  the next notification / retry correct it. This prevents pause flicker on brief Wi-Fi
+  hiccups while a real network change (which resolves to a different MAC, or removes the
+  default route as you physically leave) still drives the state correctly.
+- **First-ever run with `nil`** (no prior state) → default to active (safe default).
 
 ### B3. Pause mechanic
 - Single flag `pausedByNetwork: Bool`, owned by `AppDelegate` (driven by
@@ -157,6 +198,11 @@ CoreWLAN. On each notification, re-resolve the gateway MAC and recompute pause s
 - **Resume:** on leaving the paused network, take no active lock/unlock action; the next
   RSSI sample drives normal behavior again (BLE state is current because scanning never
   stopped).
+- **`runScript` coverage** — the `away` / `lost` / `unlocked` scripts are reached only
+  via the two guarded methods, so they are suppressed while paused (consistent). The
+  `intruded` script in `onUnlock` is **not** guarded: it fires on a real screen-unlock
+  event (e.g. a manual unlock while paused), which is intrusion detection, not an
+  automation action. Documented as intentional.
 
 ### B4. UI
 - Menu item **"Disable on this network"** (toggle). Checked when the current gateway MAC
