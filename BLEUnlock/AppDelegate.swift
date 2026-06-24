@@ -203,6 +203,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             deviceMenuIsOpen = false
             refreshDeviceMenuSelectionStates()
             deviceMenuNeedsRefresh = false
+            ensureGroupSeparatorExists()
             performDeviceMenuReorder()
             deviceMenuIsOpen = true
             ble.startScanning()
@@ -354,6 +355,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                 }
             }
         }
+        // ── 3. Ensure all monitored UUIDs have entries in ble.devices ──
+        // Without an entry, findKnownDeviceByMAC cannot correlate a newly
+        // discovered peripheral against a monitored device whose BLE UUID
+        // has rotated since the last session.
+        for uuid in uuids where ble.devices[uuid] == nil {
+            let device = Device(uuid: uuid)
+            if let info = getLEDeviceInfoFromUUID(uuid.uuidString) {
+                device.macAddr = info.macAddr
+            }
+            ble.devices[uuid] = device
+        }
     }
 
     /// Replace old UUID with new UUID in insertion order, preserving position.
@@ -368,14 +380,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     func scheduleDeviceMenuReorder() {
         guard !deviceMenuNeedsReorder else { return }
         deviceMenuNeedsReorder = true
+        // During menu tracking, only update separator visibility (safe)
+        guard !deviceMenuIsOpen else {
+            updateGroupSeparatorVisibility()
+            return
+        }
         DispatchQueue.main.async { [weak self] in
             guard let self = self, self.deviceMenuNeedsReorder else { return }
             self.deviceMenuNeedsReorder = false
+            guard !self.deviceMenuIsOpen else {
+                self.updateGroupSeparatorVisibility()
+                return
+            }
             self.performDeviceMenuReorder()
         }
     }
 
     // MARK: - Device menu ordering
+
+    /// Ensure the group separator and scanning indicator menu items exist.
+    /// Safe to call before menu tracking starts (e.g. during menuWillOpen).
+    func ensureGroupSeparatorExists() {
+        if groupSeparatorItem == nil {
+            groupSeparatorItem = NSMenuItem.separator()
+        }
+        if scanningMenuItem == nil {
+            let si = NSMenuItem(title: t("scanning"), action: nil, keyEquivalent: "")
+            si.isEnabled = false
+            scanningMenuItem = si
+        }
+    }
 
     /// Persistent separator between monitored and unmonitored device groups.
     /// Always present in the menu; visibility is toggled via isHidden instead of add/remove
@@ -409,10 +443,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         // Build desired items list (flat)
         var desired: [NSMenuItem] = []
         for (_, item) in monitoredFirst { desired.append(item) }
-        if wantsSeparator {
-            if groupSeparatorItem == nil { groupSeparatorItem = NSMenuItem.separator() }
-            desired.append(groupSeparatorItem!)
-        }
+        if groupSeparatorItem == nil { groupSeparatorItem = NSMenuItem.separator() }
+        desired.append(groupSeparatorItem!)
         if scanningMenuItem == nil {
             let si = NSMenuItem(title: t("scanning"), action: nil, keyEquivalent: "")
             si.isEnabled = false
