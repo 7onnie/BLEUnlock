@@ -1,6 +1,7 @@
 import Foundation
 import CoreBluetooth
 import Accelerate
+import IOBluetooth
 
 let DeviceInformation = CBUUID(string:"180A")
 let ManufacturerName = CBUUID(string:"2A29")
@@ -56,6 +57,23 @@ func getNameFromMAC(_ mac: String) -> String? {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         if trimmed == "" { return nil }
         return trimmed
+    }
+    return nil
+}
+
+
+/// Cross-reference a newly discovered device against known devices via MAC address.
+func findKnownDeviceByMAC(newMAC: String?, knownDevices: [UUID: Device]) -> Device? {
+    guard let newMAC = newMAC else { return nil }
+    for (_, device) in knownDevices {
+        if let knownMAC = device.macAddr, knownMAC.caseInsensitiveCompare(newMAC) == .orderedSame {
+            return device
+        }
+        if let knownInfo = getLEDeviceInfoFromUUID(device.uuid.uuidString),
+           let knownMAC2 = knownInfo.macAddr,
+           knownMAC2.caseInsensitiveCompare(newMAC) == .orderedSame {
+            return device
+        }
     }
     return nil
 }
@@ -258,6 +276,7 @@ protocol BLEDelegate {
     func newDevice(device: Device)
     func updateDevice(device: Device)
     func removeDevice(device: Device)
+    func mergeDevice(oldUUID: UUID, newDevice: Device)
     func updateRSSI(rssi: Int?, active: Bool)
     func updatePresence(shouldUnlock: Bool, shouldLock: Bool, reason: String)
     func bluetoothPowerWarn()
@@ -303,6 +322,40 @@ class MonitoredDeviceState {
         activeModeTimer = nil
         connectionTimer = nil
     }
+}
+
+/// Cached paired device list for IOBluetooth MAC resolution.
+/// Refreshed lazily to avoid querying system daemon on every BLE discovery.
+var cachedPairedDevices: [(name: String, address: String)]?
+var cachedPairedDevicesTimestamp: TimeInterval = 0
+let pairedDevicesCacheTTL: TimeInterval = 30
+
+func refreshPairedDevicesCache() {
+    let now = Date().timeIntervalSince1970
+    guard now - cachedPairedDevicesTimestamp > pairedDevicesCacheTTL else { return }
+    cachedPairedDevicesTimestamp = now
+    guard let paired = IOBluetoothDevice.pairedDevices() else {
+        cachedPairedDevices = nil
+        return
+    }
+    cachedPairedDevices = paired.compactMap { d in
+        guard let dev = d as? IOBluetoothDevice,
+              let name = dev.name,
+              let addr = dev.addressString else { return nil }
+        return (name: name, address: addr)
+    }
+}
+
+func resolveMACForDeviceName(_ name: String) -> String? {
+    refreshPairedDevicesCache()
+    guard let devices = cachedPairedDevices else { return nil }
+    var match: String?
+    for device in devices {
+        guard device.name.caseInsensitiveCompare(name) == .orderedSame else { continue }
+        if match != nil { return nil } // Ambiguous
+        match = device.address
+    }
+    return match
 }
 
 class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
@@ -700,17 +753,71 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 }
             }
             let dev = devices[peripheral.identifier]
-            var device: Device
+            var device: Device!
             let shouldTrackDiscoveredDevice = rssi >= thresholdRSSI || isMonitoring(uuid: peripheral.identifier)
             if (dev == nil) {
-                device = Device(uuid: peripheral.identifier)
-                if shouldTrackDiscoveredDevice {
+                // Build minimal device to resolve its name from all available sources
+                let probe = Device(uuid: peripheral.identifier)
+                probe.peripheral = peripheral
+                probe.manufacture = nil  // will be populated on connect
+                probe.model = nil
+                // Resolve MAC from advertisement local name, peripheral name, or IOBluetooth
+                var resolvedMAC: String?
+                if let advName = advertisementData[CBAdvertisementDataLocalNameKey] as? String,
+                   let mac = resolveMACForDeviceName(advName.trimmingCharacters(in: .whitespaces)) {
+                    resolvedMAC = mac
+                }
+                if resolvedMAC == nil, let pn = peripheral.name?.trimmingCharacters(in: .whitespaces), !pn.isEmpty {
+                    resolvedMAC = resolveMACForDeviceName(pn)
+                }
+                if resolvedMAC == nil, let info = getLEDeviceInfoFromUUID(peripheral.identifier.uuidString) {
+                    resolvedMAC = info.macAddr
+                }
+                if let resolvedMAC = resolvedMAC, let matchedDevice = findKnownDeviceByMAC(newMAC: resolvedMAC, knownDevices: devices) {
+                    // Same physical device — merge: replace old entry with new UUID
+                    device = Device(uuid: peripheral.identifier)
+                    device.peripheral = peripheral
+                    device.rssi = rssi
+                    device.isVisible = true
+                    device.macAddr = matchedDevice.macAddr ?? resolvedMAC
+                    device.blName = matchedDevice.blName
+                    print("MAC correlation: merged UUID \(matchedDevice.uuid) → \(peripheral.identifier)")
+                    
+                    // Remap monitoring if needed
+                    if isMonitoring(uuid: matchedDevice.uuid) {
+                        var updatedUUIDs = monitoredUUIDs
+                        updatedUUIDs.remove(matchedDevice.uuid)
+                        updatedUUIDs.insert(peripheral.identifier)
+                        if let oldState = monitoredStates.removeValue(forKey: matchedDevice.uuid) {
+                            oldState.peripheral = peripheral
+                            monitoredStates[peripheral.identifier] = oldState
+                        }
+                        monitoredUUIDs = updatedUUIDs
+                        UserDefaults.standard.set(monitoredUUIDs.map { $0.uuidString }, forKey: "devices")
+                        print("Remapped monitoring from \(matchedDevice.uuid) to \(peripheral.identifier)")
+                    }
+                    
+                    // Remove old UUID and add new via merge (preserves menu order)
+                    devices.removeValue(forKey: matchedDevice.uuid)
+                    devices[peripheral.identifier] = device
+                    delegate?.mergeDevice(oldUUID: matchedDevice.uuid, newDevice: device)
+                    
+                    central.connect(peripheral, options: nil)
+                    device.logNameResolutionIfNeeded(context: "discover:merged")
+                } else if shouldTrackDiscoveredDevice {
+                    device = Device(uuid: peripheral.identifier)
                     device.peripheral = peripheral
                     device.rssi = rssi
                     device.isVisible = true
                     device.advData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data
                     device.advertisedLocalName = device.normalizedName(advertisementData[CBAdvertisementDataLocalNameKey] as? String)
                     device.updateAdvertisedNameIfNeeded(device.advertisedLocalName)
+                    
+                    // IOBluetooth MAC resolution for paired devices
+                    if device.macAddr == nil, let name = device.currentResolvedName() {
+                        device.macAddr = resolveMACForDeviceName(name)
+                    }
+                    
                     devices[peripheral.identifier] = device
                     central.connect(peripheral, options: nil)
                     device.logNameResolutionIfNeeded(context: "discover:new")
@@ -724,10 +831,16 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 device.advData = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data ?? device.advData
                 device.advertisedLocalName = device.normalizedName(advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? device.advertisedLocalName
                 device.updateAdvertisedNameIfNeeded(device.advertisedLocalName)
+                // IOBluetooth MAC resolution for paired devices
+                if device.macAddr == nil, let name = device.currentResolvedName() {
+                    device.macAddr = resolveMACForDeviceName(name)
+                }
                 device.logNameResolutionIfNeeded(context: "discover:update")
                 delegate?.updateDevice(device: device)
             }
-            resetScanTimer(device: device)
+            if let device = device {
+                resetScanTimer(device: device)
+            }
         }
     }
 

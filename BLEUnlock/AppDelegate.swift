@@ -2,6 +2,7 @@ import Cocoa
 import CoreGraphics
 import ServiceManagement
 import UserNotifications
+import IOBluetooth
 
 func t(_ key: String) -> String {
     return NSLocalizedString(key, comment: "")
@@ -159,6 +160,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     var checkForUpdatesMenuItem: NSMenuItem?
     var automaticUpdateChecksMenuItem: NSMenuItem?
     var deviceDict: [UUID: NSMenuItem] = [:]
+    var deviceInsertionOrder: [UUID] = []
     var deviceCheckboxDict: [UUID: NSButton] = [:]
     var monitorDetailItems: [UUID: NSMenuItem] = [:]
     var monitorMenuItem : NSMenuItem?
@@ -285,6 +287,94 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         String(format: "%@ (%ddBm)", title, rssi)
     }
 
+    func ensurePairHintInDeviceMenu() {
+        // Check if hint already exists at index 0
+        if deviceMenu.numberOfItems > 0, deviceMenu.item(at: 0)?.tag == 999 {
+            return
+        }
+        // Remove old hint if present elsewhere
+        for i in stride(from: deviceMenu.numberOfItems - 1, through: 0, by: -1) {
+            if deviceMenu.item(at: i)?.tag == 999 {
+                deviceMenu.removeItem(at: i)
+            }
+        }
+        // Insert hint at top, before everything
+        let hint = NSMenuItem(title: t("pair_for_mac_hint"), action: nil, keyEquivalent: "")
+        hint.isEnabled = false
+        hint.tag = 999
+        hint.attributedTitle = NSAttributedString(
+            string: t("pair_for_mac_hint"),
+            attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
+        )
+        deviceMenu.insertItem(hint, at: 0)
+        deviceMenu.insertItem(NSMenuItem.separator(), at: 1)
+    }
+
+    /// Resolve MAC addresses for monitored UUIDs using IOBluetooth paired devices.
+    /// This allows cross-correlation to remap monitoring when device UUIDs changed
+    /// while BLEUnlock was not running.
+    func resolveMonitoredMACsOnStartup(uuids: Set<UUID>) {
+        guard let paired = IOBluetoothDevice.pairedDevices() else { return }
+        // Build name → MAC map from IOBluetooth
+        var nameToMAC: [String: String] = [:]
+        for d in paired {
+            guard let dev = d as? IOBluetoothDevice,
+                  let name = dev.name,
+                  let addr = dev.addressString else { continue }
+            nameToMAC[name.lowercased()] = addr
+        }
+        // For each monitored UUID, try to find its name and resolve MAC
+        for uuid in uuids {
+            let name = monitoredDeviceTitle(uuid: uuid)
+            guard name != uuid.uuidString else { continue } // Skip UUID-only names
+            if let mac = nameToMAC[name.lowercased()] {
+                print("Startup MAC resolved for \(name): \(mac)")
+                if ble.devices[uuid] == nil {
+                    let device = Device(uuid: uuid)
+                    device.macAddr = mac
+                    ble.devices[uuid] = device
+                }
+            }
+        }
+    }
+
+    /// Replace old UUID with new UUID in insertion order, preserving position.
+    func replaceUUIDInInsertionOrder(old: UUID, new: UUID) {
+        if let idx = deviceInsertionOrder.firstIndex(of: old) {
+            deviceInsertionOrder[idx] = new
+        } else if !deviceInsertionOrder.contains(new) {
+            deviceInsertionOrder.append(new)
+        }
+    }
+
+    func performDeviceMenuReorder() {
+        // Layout: hint(0) + sep(1) + Scanning(2) + devices...
+        let monitoredSet = ble.monitoredUUIDs
+        let orderedUUIDs = deviceInsertionOrder.filter { deviceDict[$0] != nil }
+        let monitoredFirst = orderedUUIDs.filter { monitoredSet.contains($0) }
+        let unmonitoredAfter = orderedUUIDs.filter { !monitoredSet.contains($0) }
+        // Remove old device items (hint=0, sep=1, scanning=2, devices=3+)
+        while deviceMenu.numberOfItems > 3 {
+            deviceMenu.removeItem(at: 3)
+        }
+        // Re-add: monitored first
+        for uuid in monitoredFirst {
+            if let menuItem = deviceDict[uuid] {
+                deviceMenu.addItem(menuItem)
+            }
+        }
+        // Separator between monitored and unmonitored, if both groups present
+        if !monitoredFirst.isEmpty && !unmonitoredAfter.isEmpty {
+            deviceMenu.addItem(NSMenuItem.separator())
+        }
+        // Unmonitored after
+        for uuid in unmonitoredAfter {
+            if let menuItem = deviceDict[uuid] {
+                deviceMenu.addItem(menuItem)
+            }
+        }
+    }
+
     func displayedRSSI(for uuid: UUID) -> Int? {
         if let monitoredRSSI = ble.monitoredStates[uuid]?.lastRSSI {
             return monitoredRSSI
@@ -339,6 +429,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                                                    title: menuItemTitleNotDetected(title: monitoredDeviceTitle(uuid: uuid)))
             deviceDict[uuid] = menuItem
             deviceCheckboxDict[uuid] = checkbox
+            if !deviceInsertionOrder.contains(uuid) {
+                deviceInsertionOrder.append(uuid)
+            }
         }
     }
     
@@ -352,6 +445,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         let checkbox = configureDeviceMenuView(menuItem, uuid: device.uuid, title: menuItemTitle(device: device))
         deviceDict[device.uuid] = menuItem
         deviceCheckboxDict[device.uuid] = checkbox
+        if !deviceInsertionOrder.contains(device.uuid) {
+            deviceInsertionOrder.append(device.uuid)
+        }
         updateMonitorStatusItems()
     }
     
@@ -363,6 +459,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             let checkbox = configureDeviceMenuView(menuItem, uuid: device.uuid, title: menuItemTitle(device: device))
             deviceDict[device.uuid] = menuItem
             deviceCheckboxDict[device.uuid] = checkbox
+            if !deviceInsertionOrder.contains(device.uuid) {
+                deviceInsertionOrder.append(device.uuid)
+            }
         }
         updateMonitorStatusItems()
     }
@@ -386,6 +485,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         }
         deviceDict.removeValue(forKey: device.uuid)
         deviceCheckboxDict.removeValue(forKey: device.uuid)
+        deviceInsertionOrder.removeAll { $0 == device.uuid }
+        updateMonitorStatusItems()
+    }
+
+    func mergeDevice(oldUUID: UUID, newDevice: Device) {
+        // Remove old menu entry
+        if let menuItem = deviceDict.removeValue(forKey: oldUUID) {
+            menuItem.menu?.removeItem(menuItem)
+        }
+        deviceCheckboxDict.removeValue(forKey: oldUUID)
+        // Preserve insertion order position
+        replaceUUIDInInsertionOrder(old: oldUUID, new: newDevice.uuid)
+        // Add new menu entry
+        let menuItem = deviceMenu.addItem(withTitle: "", action: nil, keyEquivalent: "")
+        let checkbox = configureDeviceMenuView(menuItem, uuid: newDevice.uuid, title: menuItemTitle(device: newDevice))
+        deviceDict[newDevice.uuid] = menuItem
+        deviceCheckboxDict[newDevice.uuid] = checkbox
+        performDeviceMenuReorder()
         updateMonitorStatusItems()
     }
 
@@ -1157,6 +1274,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         refreshDeviceMenuSelectionStates()
         refreshSettingsMenus()
         refreshMonitorStatusItems()
+        performDeviceMenuReorder()
     }
 
     func errorModal(_ msg: String, info: String? = nil) {
@@ -1618,6 +1736,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         item = mainMenu.addItem(withTitle: t("device"), action: nil, keyEquivalent: "")
         item.submenu = deviceMenu
         deviceMenu.delegate = self
+        // Hint at top (static, never reordered)
+        let hint = NSMenuItem(title: t("pair_for_mac_hint"), action: nil, keyEquivalent: "")
+        hint.isEnabled = false
+        hint.tag = 999
+        hint.attributedTitle = NSAttributedString(
+            string: t("pair_for_mac_hint"),
+            attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)]
+        )
+        deviceMenu.addItem(hint)
+        deviceMenu.addItem(NSMenuItem.separator())
         deviceMenu.addItem(withTitle: t("scanning"), action: nil, keyEquivalent: "")
 
         let unlockSettingsItem = mainMenu.addItem(withTitle: t("unlock_settings"), action: nil, keyEquivalent: "")
@@ -1834,6 +1962,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         }
         ble.delegate = self
         let monitoredUUIDs = loadMonitoredUUIDs()
+        // Resolve MAC addresses for monitored devices at startup so cross-correlation works
+        if !monitoredUUIDs.isEmpty {
+            resolveMonitoredMACsOnStartup(uuids: monitoredUUIDs)
+        }
         if !monitoredUUIDs.isEmpty {
             monitorDevices(uuids: monitoredUUIDs)
         }

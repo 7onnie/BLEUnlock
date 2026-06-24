@@ -164,9 +164,12 @@ On the other hand, in order for BLEUnlock to track your device, its MAC address 
 
 Fortunately, on Apple devices, if you are signed in with the same Apple ID as your Mac, the MAC address is resolved to the true (public) address.
 
-If a device uses rotating private addresses, you can also try pairing it with your Mac once in *System Settings* > *Bluetooth* (or *System Preferences* > *Bluetooth* on older macOS versions). After the device is connected and trusted by the system, macOS may keep recognizing it more consistently, and BLEUnlock may then see a stable identity as well.
+### Using a paired device
 
-This is only a workaround that is worth trying. It worked with my RedMagic phone, but I cannot guarantee that every device using rotating private addresses will be supported reliably.
+If a device uses rotating private addresses, pair it with your Mac once in *System Settings* > *Bluetooth*. After pairing, BLEUnlock can read the device's MAC address from the system and display it in the device list. This enables:
+
+- **Reliable identification**: the MAC address is shown next to the device name, so you always know which device is which.
+- **Automatic re-tracking**: if the device's BLE UUID changes after a disconnect or system reboot, BLEUnlock will automatically remap tracking to the new UUID via MAC address matching — no manual reconfiguration needed.
 
 Pairing itself usually has little effect on battery life. The bigger battery impact comes from frequent active Bluetooth connections or polling, not from the one-time pairing step.
 
