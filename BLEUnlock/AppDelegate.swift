@@ -1920,11 +1920,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
 
     @objc func toggleLaunchAtLogin(_ menuItem: NSMenuItem) {
         let launchAtLogin = !isLaunchAtLoginEnabled()
-        if setLaunchAtLogin(launchAtLogin) {
-            prefs.set(launchAtLogin, forKey: "launchAtLogin")
-            menuItem.state = launchAtLogin ? .on : .off
-        } else {
-            menuItem.state = isLaunchAtLoginEnabled() ? .on : .off
+        menuItem.state = launchAtLogin ? .on : .off
+        prefs.set(launchAtLogin, forKey: "launchAtLogin")
+        // SMAppService.register() / unregister() are XPC calls; offload to avoid blocking UI.
+        smdQueue.async { [weak self] in
+            _ = self?.setLaunchAtLogin(launchAtLogin)
         }
     }
 
@@ -2305,43 +2305,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     }
 
     func isLaunchAtLoginEnabled() -> Bool {
-        if #available(macOS 13.0, *) {
-            let service = SMAppService.loginItem(identifier: launcherBundleIdentifier())
-            switch service.status {
-            case .enabled, .requiresApproval:
-                return true
-            case .notRegistered, .notFound:
-                return false
-            @unknown default:
-                return prefs.bool(forKey: "launchAtLogin")
-            }
-        }
+        // Use cached pref; smd query is slow and only needed for verification.
         return prefs.bool(forKey: "launchAtLogin")
     }
 
     @discardableResult
     func setLaunchAtLogin(_ enabled: Bool, showErrors: Bool = true) -> Bool {
         if #available(macOS 13.0, *) {
-            disableLegacyLoginItem()
             let service = SMAppService.loginItem(identifier: launcherBundleIdentifier())
             do {
                 if enabled {
                     try service.register()
-                    if service.status == .requiresApproval && showErrors {
-                        errorModal("BLEUnlock needs approval in Login Items.",
-                                   info: "Open System Settings > General > Login Items and allow BLEUnlock.")
-                    }
                 } else {
                     try service.unregister()
                 }
                 return true
             } catch {
-                if enabled && service.status == .enabled {
-                    return true
-                }
-                if !enabled && service.status == .notRegistered {
-                    return true
-                }
                 if showErrors {
                     errorModal("Failed to update Launch at Login", info: error.localizedDescription)
                 } else {
