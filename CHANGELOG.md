@@ -1,4 +1,5 @@
 # Release Notes
+
 ## 1.14.2
 
 - **Fix:** RSSI signal display is more stable — switched from 5-sample moving average to median-of-3 filter. Single outliers are completely eliminated, while real signal changes track with lower latency.
@@ -10,6 +11,10 @@
 - **Fix:** Device detection count (e.g. '1/2') is accurate immediately on menu open.
 - **Fix:** Monitored device list order no longer flickers during scans.
 
+- **Feat:** Hold ⌥ (Option) to show full MAC address and UUID — default menu displays device name and RSSI only.
+- **Feat:** UUID-only devices show collapsed `XXXX…YYYY` format for readability.
+- **Feat:** Clickable hint "配对以稳定追踪随机地址 →" opens Bluetooth settings.
+- **Feat:** ⌥ indicator on "设备列表" main menu item.
 <details>
 <summary>中文发布说明</summary>
 
@@ -21,5 +26,9 @@
 - **修复:** 设备同时广播经典蓝牙和 BLE 且同名时（如 RedMagic）MAC 解析失败 — 优先选经典蓝牙条目。
 - **修复:** 打开菜单时设备检测计数（如 '1/2'）即时准确。
 - **修复:** 已勾选设备列表不再因扫描而频繁跳动。
+- **新增:** 按住 ⌥ 显示完整 MAC 地址和 UUID — 默认仅显示设备名和 RSSI。
+- **新增:** 无名称设备显示折叠 UUID `XXXX…YYYY`。
+- **新增:** 可点击提示「配对以稳定追踪随机地址 →」打开蓝牙设置。
+- **新增:** 主菜单「设备列表」⌥ 提示。
 
 </details>
