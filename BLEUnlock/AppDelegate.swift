@@ -324,18 +324,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         // ── 1. Restore persisted MAC→UUID mappings from UserDefaults ──
         let savedMACToUUID = loadPersistedMACs()
         let persistedCount = savedMACToUUID.count
+        let monitoredUUIDStrings = Set(uuids.map { $0.uuidString })
+        macInheritLog("resolveMonitoredMACsOnStartup: persistedCount=\(persistedCount) monitoredCount=\(uuids.count)")
         for (mac, uuidStr) in savedMACToUUID {
+            macInheritLog("persisted: mac=\(mac) -> uuid=\(uuidStr)")
             guard let uuid = UUID(uuidString: uuidStr) else {
+                macInheritLog("  SKIP: invalid UUID string")
                 continue
             }
             if uuids.contains(uuid) {
+                macInheritLog("  MATCH: uuid=\(uuidStr) is monitored, setting mac=\(mac)")
                 if ble.devices[uuid] == nil {
                     let device = Device(uuid: uuid)
                     device.macAddr = mac
                     ble.devices[uuid] = device
                 } else {
+                    macInheritLog("  device already exists in ble.devices")
                 }
             } else {
+                macInheritLog("  NO-MATCH: uuid=\(uuidStr) NOT in monitored set (monitored: \(monitoredUUIDStrings.sorted().joined(separator: ", ")))")
             }
         }
         // ── 3. Ensure all monitored UUIDs have entries in ble.devices ──
@@ -346,8 +353,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             let device = Device(uuid: uuid)
             if let info = getLEDeviceInfoFromUUID(uuid.uuidString) {
                 device.macAddr = info.macAddr
+                macInheritLog("LE-db: uuid=\(uuid.uuidString) -> mac=\(info.macAddr ?? "nil")")
+            } else {
+                macInheritLog("LE-db: uuid=\(uuid.uuidString) -> NO MATCH in LE database, checking persistence...")
+                // Fallback: check if any persisted MAC maps to a DIFFERENT UUID — 
+                // this means the UUID rotated since last persist. Inject the MAC.
+                for (mac, savedUUID) in savedMACToUUID {
+                    if !uuids.contains(UUID(uuidString: savedUUID) ?? UUID()) {
+                        macInheritLog("  INJECT orphan MAC=\(mac) (was \(savedUUID)) into \(uuid.uuidString)")
+                        device.macAddr = mac
+                        break
+                    }
+                }
             }
             ble.devices[uuid] = device
+            if device.macAddr == nil {
+                macInheritLog("  WARNING: uuid=\(uuid.uuidString) has NO macAddr after all lookups")
+            }
         }
     }
 
@@ -564,6 +586,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     }
 
     func updateDeviceCheckbox(_ checkbox: NSButton, uuid: UUID, title: String) {
+        checkbox.identifier = NSUserInterfaceItemIdentifier(uuid.uuidString)
         checkbox.title = title
         checkbox.state = ble.isMonitoring(uuid: uuid) ? .on : .off
         let fittingSize = checkbox.fittingSize
@@ -622,18 +645,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         // Try resolving MAC first (cached Bluetooth plist lookup, near-zero cost).
         if !ble.isMonitoring(uuid: device.uuid) {
             var mac = device.macAddr
+            let leLookupResult: String? = getMACFromUUID(device.uuid.uuidString)
+            if mac == nil && leLookupResult != nil {
+                mac = leLookupResult
+                device.macAddr = mac
+            }
+            // Fallback: check persistence for exact match only.
+            // Never inject MACs from other devices — correlation is done in BLE discovery.
             if mac == nil {
-                mac = getMACFromUUID(device.uuid.uuidString)
-                if mac != nil { device.macAddr = mac }
+                let persisted = loadPersistedMACs()
+                for (pmac, puuid) in persisted {
+                    if puuid == device.uuid.uuidString {
+                        mac = pmac
+                        device.macAddr = pmac
+                        macInheritLog("newDevice: uuid=\(device.uuid.uuidString) got MAC=\(pmac) from persistence (exact match)")
+                        break
+                    }
+                }
+                if mac == nil {
+                    macInheritLog("newDevice: uuid=\(device.uuid.uuidString) NO MAC (LE=\(leLookupResult ?? "nil") persistedKeys=\(persisted.keys.joined(separator: ", ")))")
+                }
             }
             if let mac = mac {
                 let normalized = canonicalMAC(mac)
+                macInheritLog("newDevice: uuid=\(device.uuid.uuidString) MAC=\(mac) normalized=\(normalized) checking monitored devices...")
                 for (monUUID, monDev) in ble.devices where ble.isMonitoring(uuid: monUUID) {
                     if let m = monDev.macAddr, canonicalMAC(m) == normalized {
-                        mergeDevice(oldUUID: monUUID, newDevice: device)
+                        macInheritLog("newDevice: MERGE \(device.uuid.uuidString) (MAC=\(mac)) into monitored \(monUUID.uuidString) (MAC=\(m))")
+                        ble.remapMonitoredUUID(from: monUUID, to: device.uuid, peripheral: device.peripheral)
+                        replaceMonitoredDevice(oldUUID: monUUID, with: device)
                         return
                     }
                 }
+                macInheritLog("newDevice: no monitored device matched MAC=\(normalized)")
             }
         }
         let menuItem = addDeviceMenuItem(title: "", uuid: device.uuid)
@@ -651,6 +695,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     }
     
     func updateDevice(device: Device) {
+        macInheritLog("updateDevice: uuid=\(device.uuid.uuidString) mac=\(device.macAddr ?? "nil") isMonitored=\(ble.isMonitoring(uuid: device.uuid))")
         if let checkbox = deviceCheckboxDict[device.uuid] {
             updateDeviceCheckbox(checkbox, uuid: device.uuid, title: menuItemTitle(device: device))
         } else {
@@ -692,7 +737,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         updateMonitorStatusItems()
     }
 
-    func mergeDevice(oldUUID: UUID, newDevice: Device) {
+    func replaceMonitoredDevice(oldUUID: UUID, with newDevice: Device) {
+        macInheritLog("replaceMonitoredDevice: old=\(oldUUID.uuidString) -> new=\(newDevice.uuid.uuidString) mac=\(newDevice.macAddr ?? "nil") isMonitored=\(ble.isMonitoring(uuid: oldUUID)) menuOpen=\(deviceMenuIsOpen)")
         // Clean up insertion order: remove any prior entry for newUUID (from newDevice)
         // before replacing oldUUID's position, preventing duplicates.
         deviceInsertionOrder.removeAll { $0 == newDevice.uuid }
