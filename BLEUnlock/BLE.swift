@@ -830,7 +830,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                         advertisementData: [String : Any],
                         rssi RSSI: NSNumber)
     {
-        let rssi = RSSI.intValue > 0 ? -100 : RSSI.intValue
+        let rssi = RSSI.intValue >= 0 ? -100 : RSSI.intValue
         if let state = monitoredStates[peripheral.identifier], !monitoringSuspended {
             state.peripheral = peripheral
             if !state.active {
@@ -876,29 +876,47 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 } else {
                     macInheritLog(" BLE-discover: uuid=\(peripheral.identifier.uuidString) resolvedMAC=\(resolvedMAC!) deviceCount=\(devices.count)")
                 }
+                var mergedViaMAC = false
                 if let resolvedMAC = resolvedMAC, let matchedDevice = findKnownDeviceByMAC(newMAC: resolvedMAC, knownDevices: devices) {
-                    // Same physical device — merge: replace old entry with new UUID
-                    device = Device(uuid: peripheral.identifier)
-                    device.peripheral = peripheral
-                    device.rssi = rssi
-                    device.isVisible = true
-                    device.macAddr = matchedDevice.macAddr ?? resolvedMAC
-                    device.blName = matchedDevice.blName
-                    print("MAC correlation: merged UUID \(matchedDevice.uuid) → \(peripheral.identifier)")
-                    
-                    // Remap monitoring if needed
-                    let didRemap = remapMonitoredUUID(from: matchedDevice.uuid, to: peripheral.identifier, peripheral: peripheral)
-                    
-                    // Remove old UUID and add new via merge (preserves menu order)
-                    devices.removeValue(forKey: matchedDevice.uuid)
-                    devices[peripheral.identifier] = device
-                    if didRemap {
-                        delegate?.replaceMonitoredDevice(oldUUID: matchedDevice.uuid, with: device)
+                    // DIAGNOSTIC: log merge decision details
+                    macInheritLog(" MERGE-CHECK: new=\(peripheral.identifier.uuidString) mac=\(resolvedMAC) old=\(matchedDevice.uuid.uuidString) oldVisible=\(matchedDevice.isVisible) oldMonitored=\(isMonitoring(uuid: matchedDevice.uuid)) oldMAC=\(matchedDevice.macAddr ?? "nil")")
+                    // If old UUID is still visible and monitored, skip merge — retry later
+                    // when it goes invisible so remapMonitoredUUID can succeed.
+                    // Premature merge breaks future remap: old UUID gets removed from
+                    // devices before remap can fire, making it permanently orphaned.
+                    if isMonitoring(uuid: matchedDevice.uuid) && matchedDevice.isVisible {
+                        macInheritLog(" Merge-deferred(skip): old-uuid=\(matchedDevice.uuid.uuidString) still visible, new-uuid=\(peripheral.identifier.uuidString)")
+                        print("MAC correlation deferred (old still visible): \(matchedDevice.uuid) → \(peripheral.identifier) — skipping")
+                        // Old UUID still visible, skip entirely. Don't cache new UUID
+                        // in devices — that would create a duplicate MAC entry that
+                        // findKnownDeviceByMAC might return first (breaking remap).
+                        mergedViaMAC = true
+                    } else {
+                        // Same physical device — merge: replace old entry with new UUID
+                        device = Device(uuid: peripheral.identifier)
+                        device.peripheral = peripheral
+                        device.rssi = rssi
+                        device.isVisible = true
+                        device.macAddr = matchedDevice.macAddr ?? resolvedMAC
+                        device.blName = matchedDevice.blName
+                        print("MAC correlation: merged UUID \(matchedDevice.uuid) → \(peripheral.identifier)")
+                        
+                        // Remap monitoring if needed
+                        let didRemap = remapMonitoredUUID(from: matchedDevice.uuid, to: peripheral.identifier, peripheral: peripheral)
+                        
+                        // Remove old UUID and add new via merge (preserves menu order)
+                        devices.removeValue(forKey: matchedDevice.uuid)
+                        devices[peripheral.identifier] = device
+                        mergedViaMAC = true
+                        if didRemap {
+                            delegate?.replaceMonitoredDevice(oldUUID: matchedDevice.uuid, with: device)
+                        }
+                        
+                        central.connect(peripheral, options: nil)
+                        device.logNameResolutionIfNeeded(context: "discover:merged")
                     }
-                    
-                    central.connect(peripheral, options: nil)
-                    device.logNameResolutionIfNeeded(context: "discover:merged")
-                } else if shouldTrackDiscoveredDevice {
+                }
+                if !mergedViaMAC, shouldTrackDiscoveredDevice {
                     device = Device(uuid: peripheral.identifier)
                     device.peripheral = peripheral
                     device.rssi = rssi
@@ -917,12 +935,19 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                     
                     // Post-hoc MAC correlation: check again now that device.macAddr is set
                     if let mac = device.macAddr, let matched = findKnownDeviceByMAC(newMAC: mac, knownDevices: devices.filter { $0.key != peripheral.identifier }) {
-                        macInheritLog(" Late-correlation(new): merging \(peripheral.identifier) -> \(matched.uuid)")
-                        print("Late correlation: merging \(peripheral.identifier) into \(matched.uuid)")
-                        devices.removeValue(forKey: matched.uuid)
-                        let dr = remapMonitoredUUID(from: matched.uuid, to: peripheral.identifier, peripheral: peripheral)
-                        DispatchQueue.main.async { [weak self] in
-                            if dr { self?.delegate?.replaceMonitoredDevice(oldUUID: matched.uuid, with: device) }
+                        // Defer if old UUID still visible and monitored (same logic as discover:merged)
+                        if isMonitoring(uuid: matched.uuid) && matched.isVisible {
+                            macInheritLog(" Late-correlation(new)-deferred: old-uuid=\(matched.uuid.uuidString) still visible")
+                            print("Late correlation (new) deferred (old still visible): \(matched.uuid)")
+                            // Device is already cached in devices with MAC; suppress from menu.
+                        } else {
+                            macInheritLog(" Late-correlation(new): merging \(peripheral.identifier) -> \(matched.uuid)")
+                            print("Late correlation: merging \(peripheral.identifier) into \(matched.uuid)")
+                            let dr = remapMonitoredUUID(from: matched.uuid, to: peripheral.identifier, peripheral: peripheral)
+                            devices.removeValue(forKey: matched.uuid)
+                            DispatchQueue.main.async { [weak self] in
+                                if dr { self?.delegate?.replaceMonitoredDevice(oldUUID: matched.uuid, with: device) }
+                            }
                         }
                     } else {
                         DispatchQueue.main.async { [weak self] in self?.delegate?.newDevice(device: device) }
@@ -943,16 +968,29 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 if device.macAddr == nil, let name = device.currentResolvedName() {
                     device.macAddr = resolveMACForDeviceName(name)
                 }
-                // Post-hoc MAC correlation if MAC was just resolved
-                if !hadMAC, let mac = device.macAddr, let matched = findKnownDeviceByMAC(newMAC: mac, knownDevices: devices.filter { $0.key != peripheral.identifier }) {
-                    macInheritLog(" Late-correlation(update): merging \(peripheral.identifier) -> \(matched.uuid)")
-                    print("Late correlation (update): merging \(peripheral.identifier) into \(matched.uuid)")
-                    devices.removeValue(forKey: matched.uuid)
-                    let dr = remapMonitoredUUID(from: matched.uuid, to: peripheral.identifier, peripheral: peripheral)
-                    DispatchQueue.main.async { [weak self] in
-                        if dr { self?.delegate?.replaceMonitoredDevice(oldUUID: matched.uuid, with: device) }
+                // Check for remap opportunity on every RSSI update (not just first MAC resolution).
+                // A monitored UUID may have become invisible since last update — remap to this
+                // UUID if it broadcasts the same MAC.
+                var didLateCorrelate = false
+                if let mac = device.macAddr, let matched = findKnownDeviceByMAC(newMAC: mac, knownDevices: devices.filter { $0.key != peripheral.identifier }) {
+                    macInheritLog(" LATE-CHECK: uuid=\(peripheral.identifier.uuidString) mac=\(mac) matched=\(matched.uuid.uuidString) matchedVisible=\(matched.isVisible) matchedMonitored=\(isMonitoring(uuid: matched.uuid))")
+                    if !isMonitoring(uuid: matched.uuid) || !matched.isVisible {
+                        // Old UUID is either unmonitored or invisible → safe to merge + remap
+                        macInheritLog(" Late-correlation(update): merging \(peripheral.identifier) -> \(matched.uuid)")
+                        print("Late correlation (update): merging \(peripheral.identifier) into \(matched.uuid)")
+                        let dr = remapMonitoredUUID(from: matched.uuid, to: peripheral.identifier, peripheral: peripheral)
+                        devices.removeValue(forKey: matched.uuid)
+                        didLateCorrelate = true
+                        DispatchQueue.main.async { [weak self] in
+                            if dr { self?.delegate?.replaceMonitoredDevice(oldUUID: matched.uuid, with: device) }
+                            else { self?.delegate?.updateDevice(device: device) }
+                        }
+                    } else if !hadMAC {
+                        macInheritLog(" Late-correlation(update)-deferred: old-uuid=\(matched.uuid.uuidString) still visible")
+                        print("Late correlation (update) deferred (old still visible): \(matched.uuid)")
                     }
-                } else {
+                }
+                if !didLateCorrelate {
                     device.logNameResolutionIfNeeded(context: "discover:update")
                     DispatchQueue.main.async { [weak self] in self?.delegate?.updateDevice(device: device) }
                 }
@@ -989,7 +1027,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
         guard !monitoringSuspended else { return }
         guard let state = monitoredState(for: peripheral) else { return }
-        let rssi = RSSI.intValue > 0 ? -100 : RSSI.intValue
+        let rssi = RSSI.intValue >= 0 ? -100 : RSSI.intValue
         updateMonitoredState(state, rssi: rssi)
         state.lastReadAt = Date().timeIntervalSince1970
 
