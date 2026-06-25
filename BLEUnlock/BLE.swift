@@ -1,7 +1,28 @@
 import Foundation
 import CoreBluetooth
-import Accelerate
 import IOBluetooth
+
+func macInheritLog(_ message: String) {
+    let df = DateFormatter()
+    df.dateFormat = "HH:mm:ss.SSS"
+    let ts = df.string(from: Date())
+    let line = "[BLEUnlock][MACInherit] \(ts) " + message + "\n"
+    let data = Data(line.utf8)
+    let fm = FileManager.default
+    let dir = fm.urls(for: .libraryDirectory, in: .userDomainMask).first!
+        .appendingPathComponent("Logs/BLEUnlock", isDirectory: true)
+    try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("mac-inherit.log")
+    if !fm.fileExists(atPath: url.path) {
+        fm.createFile(atPath: url.path, contents: nil)
+    }
+    if let h = FileHandle(forWritingAtPath: url.path) {
+        h.seekToEndOfFile()
+        h.write(data)
+        h.closeFile()
+    }
+}
+
 
 let DeviceInformation = CBUUID(string:"180A")
 let ManufacturerName = CBUUID(string:"2A29")
@@ -26,7 +47,10 @@ func nameResolutionLogURL() -> URL? {
 }
 
 func appendNameResolutionLog(_ message: String) {
-    let line = message + "\n"
+    let df = DateFormatter()
+    df.dateFormat = "HH:mm:ss.SSS"
+    let ts = df.string(from: Date())
+    let line = ts + " " + message + "\n"
     let data = Data(line.utf8)
     let fileManager = FileManager.default
     guard let logURL = nameResolutionLogURL() else { return }
@@ -101,16 +125,20 @@ func canonicalMAC(_ mac: String) -> String {
 func findKnownDeviceByMAC(newMAC: String?, knownDevices: [UUID: Device]) -> Device? {
     guard let newMAC = newMAC else { return nil }
     let normalized = canonicalMAC(newMAC)
+    // print("[BLEUnlock][MACInherit] findKnownDeviceByMAC: searching for normalized=\(normalized) in \(knownDevices.count) devices")
     for (_, device) in knownDevices {
         if let knownMAC = device.macAddr, canonicalMAC(knownMAC) == normalized {
+            macInheritLog(" findKnownDeviceByMAC: MATCH \(normalized) via device.macAddr -> uuid=\(device.uuid.uuidString)")
             return device
         }
         if let knownInfo = getLEDeviceInfoFromUUID(device.uuid.uuidString),
            let knownMAC2 = knownInfo.macAddr,
            canonicalMAC(knownMAC2) == normalized {
+            macInheritLog(" findKnownDeviceByMAC: MATCH \(normalized) via LE-db -> uuid=\(device.uuid.uuidString)")
             return device
         }
     }
+    macInheritLog(" findKnownDeviceByMAC: NO MATCH for \(normalized)")
     return nil
 }
 
@@ -316,7 +344,7 @@ protocol BLEDelegate {
     func newDevice(device: Device)
     func updateDevice(device: Device)
     func removeDevice(device: Device)
-    func mergeDevice(oldUUID: UUID, newDevice: Device)
+    func replaceMonitoredDevice(oldUUID: UUID, with newDevice: Device)
     func updateRSSI(rssi: Int?, active: Bool)
     func updatePresence(shouldUnlock: Bool, shouldLock: Bool, reason: String)
     func bluetoothPowerWarn()
@@ -337,7 +365,7 @@ class MonitoredDeviceState {
     weak var peripheral: CBPeripheral?
     var proximityTimer: Timer?
     var signalTimer: Timer?
-    var latestRSSIs: [Double] = []
+    var rssiWindow: [Int] = []
     var lastReadAt = 0.0
     var activeModeTimer: Timer?
     var connectionTimer: Timer?
@@ -405,8 +433,31 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     var devices : [UUID : Device] = [:]
     var delegate: BLEDelegate?
     var scanMode = false
-    var monitoredUUIDs: Set<UUID> = []
+    var monitoredUUIDs: Set<UUID> = [] {
+        didSet {
+            macInheritLog("monitoredUUIDs changed: oldCount=\(oldValue.count) newCount=\(monitoredUUIDs.count) uuids=\(monitoredUUIDs.map(\.uuidString).sorted().joined(separator: ", "))")
+        }
+    }
     var monitoredStates: [UUID: MonitoredDeviceState] = [:]
+
+    /// Remap monitored UUID when a physical device's UUID rotates (e.g. privacy rotation).
+    /// Transfers monitoredState to the new peripheral and persists the updated set.
+    func remapMonitoredUUID(from oldUUID: UUID, to newUUID: UUID, peripheral: CBPeripheral?) {
+        guard isMonitoring(uuid: oldUUID) else { return }
+        var updatedUUIDs = monitoredUUIDs
+        updatedUUIDs.remove(oldUUID)
+        updatedUUIDs.insert(newUUID)
+        if let oldState = monitoredStates.removeValue(forKey: oldUUID), let p = peripheral {
+            oldState.peripheral = p
+            monitoredStates[newUUID] = oldState
+        }
+        monitoredUUIDs = updatedUUIDs
+        UserDefaults.standard.set(monitoredUUIDs.map { $0.uuidString }, forKey: "devices")
+        macInheritLog(" remapMonitoredUUID: \(oldUUID) -> \(newUUID)")
+        print("Remapped monitoring from \(oldUUID) to \(newUUID)")
+    }
+
+
     var presence = false
     var shouldLock = false
     var unlockDeviceLogic: UnlockDeviceLogic = .anyClose
@@ -418,7 +469,6 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     var powerWarn = true
     var passiveMode = false
     var thresholdRSSI = -70
-    var latestN: Int = 5
     var lastAuthorizationRefreshAt = 0.0
     let minimumAuthorizationRefreshInterval = 2.0
     var monitoringSuspended = false
@@ -494,7 +544,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             state.invalidateTimers()
             state.lastRSSI = nil
             state.lastReadAt = 0
-            state.latestRSSIs.removeAll()
+            state.rssiWindow.removeAll()
             state.presence = false
             if let peripheral = state.peripheral, peripheral.state != .disconnected {
                 centralMgr.cancelPeripheralConnection(peripheral)
@@ -551,14 +601,14 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         for uuid in uuids {
             let state = monitoredStates[uuid] ?? MonitoredDeviceState(uuid: uuid)
             state.presence = true
-            state.latestRSSIs.removeAll()
+            state.rssiWindow.removeAll()
             state.proximityTimer?.invalidate()
             state.proximityTimer = nil
 
             if let device = devices[uuid] {
                 state.peripheral = device.peripheral ?? state.peripheral
                 state.lastRSSI = device.rssi
-                state.latestRSSIs.append(Double(device.rssi))
+                state.rssiWindow = [device.rssi]
             } else {
                 state.lastRSSI = nil
             }
@@ -629,7 +679,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             state.activeModeTimer = nil
             state.connectionTimer?.invalidate()
             state.connectionTimer = nil
-            state.latestRSSIs.removeAll()
+            state.rssiWindow.removeAll()
             self.updateAggregateRSSI()
             if state.presence {
                 state.presence = false
@@ -656,7 +706,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             for state in monitoredStates.values {
                 state.invalidateTimers()
                 state.lastRSSI = nil
-                state.latestRSSIs.removeAll()
+                state.rssiWindow.removeAll()
                 state.presence = false
             }
             presence = false
@@ -671,22 +721,25 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
     
+    /// Median-of-3 filter: maintains a sliding window of the 3 most recent raw RSSI
+    /// values and outputs the median. Single outliers (±20 dBm spikes) are completely
+    /// eliminated, while real trends track within 1 sample (2 seconds).
     func getEstimatedRSSI(state: MonitoredDeviceState, rssi: Int) -> Int {
-        if state.latestRSSIs.count >= latestN {
-            state.latestRSSIs.removeFirst()
+        // Ignore invalid readings that would corrupt the median window
+        guard rssi < 0 else { return state.lastRSSI ?? rssi }
+        state.rssiWindow.append(rssi)
+        if state.rssiWindow.count > 3 {
+            state.rssiWindow.removeFirst()
         }
-        state.latestRSSIs.append(Double(rssi))
-        var mean: Double = 0.0
-        var sddev: Double = 0.0
-        vDSP_normalizeD(state.latestRSSIs, 1, nil, 1, &mean, &sddev, vDSP_Length(state.latestRSSIs.count))
-        return Int(mean)
+        let sorted = state.rssiWindow.sorted()
+        return sorted[state.rssiWindow.count / 2]
     }
 
     func updateMonitoredState(_ state: MonitoredDeviceState, rssi: Int) {
         if rssi >= (unlockRSSI == UNLOCK_DISABLED ? lockRSSI : unlockRSSI) && !state.presence {
             print("Device \(state.uuid) is close")
             state.presence = true
-            state.latestRSSIs.removeAll() // Avoid bouncing
+            state.rssiWindow.removeAll()
             updateAggregatePresence(reason: "close")
         }
 
@@ -772,7 +825,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                         advertisementData: [String : Any],
                         rssi RSSI: NSNumber)
     {
-        let rssi = RSSI.intValue > 0 ? 0 : RSSI.intValue
+        let rssi = RSSI.intValue > 0 ? -100 : RSSI.intValue
         if let state = monitoredStates[peripheral.identifier], !monitoringSuspended {
             state.peripheral = peripheral
             if !state.active {
@@ -813,6 +866,11 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 if resolvedMAC == nil, let info = getLEDeviceInfoFromUUID(peripheral.identifier.uuidString) {
                     resolvedMAC = info.macAddr
                 }
+                if resolvedMAC == nil {
+                    macInheritLog(" BLE-discover: uuid=\(peripheral.identifier.uuidString) NO MAC resolved")
+                } else {
+                    macInheritLog(" BLE-discover: uuid=\(peripheral.identifier.uuidString) resolvedMAC=\(resolvedMAC!) deviceCount=\(devices.count)")
+                }
                 if let resolvedMAC = resolvedMAC, let matchedDevice = findKnownDeviceByMAC(newMAC: resolvedMAC, knownDevices: devices) {
                     // Same physical device — merge: replace old entry with new UUID
                     device = Device(uuid: peripheral.identifier)
@@ -824,23 +882,12 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                     print("MAC correlation: merged UUID \(matchedDevice.uuid) → \(peripheral.identifier)")
                     
                     // Remap monitoring if needed
-                    if isMonitoring(uuid: matchedDevice.uuid) {
-                        var updatedUUIDs = monitoredUUIDs
-                        updatedUUIDs.remove(matchedDevice.uuid)
-                        updatedUUIDs.insert(peripheral.identifier)
-                        if let oldState = monitoredStates.removeValue(forKey: matchedDevice.uuid) {
-                            oldState.peripheral = peripheral
-                            monitoredStates[peripheral.identifier] = oldState
-                        }
-                        monitoredUUIDs = updatedUUIDs
-                        UserDefaults.standard.set(monitoredUUIDs.map { $0.uuidString }, forKey: "devices")
-                        print("Remapped monitoring from \(matchedDevice.uuid) to \(peripheral.identifier)")
-                    }
+                    remapMonitoredUUID(from: matchedDevice.uuid, to: peripheral.identifier, peripheral: peripheral)
                     
                     // Remove old UUID and add new via merge (preserves menu order)
                     devices.removeValue(forKey: matchedDevice.uuid)
                     devices[peripheral.identifier] = device
-                    delegate?.mergeDevice(oldUUID: matchedDevice.uuid, newDevice: device)
+                    delegate?.replaceMonitoredDevice(oldUUID: matchedDevice.uuid, with: device)
                     
                     central.connect(peripheral, options: nil)
                     device.logNameResolutionIfNeeded(context: "discover:merged")
@@ -863,10 +910,12 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                     
                     // Post-hoc MAC correlation: check again now that device.macAddr is set
                     if let mac = device.macAddr, let matched = findKnownDeviceByMAC(newMAC: mac, knownDevices: devices.filter { $0.key != peripheral.identifier }) {
+                        macInheritLog(" Late-correlation(new): merging \(peripheral.identifier) -> \(matched.uuid)")
                         print("Late correlation: merging \(peripheral.identifier) into \(matched.uuid)")
                         devices.removeValue(forKey: matched.uuid)
+                        remapMonitoredUUID(from: matched.uuid, to: peripheral.identifier, peripheral: peripheral)
                         DispatchQueue.main.async { [weak self] in
-                            self?.delegate?.mergeDevice(oldUUID: matched.uuid, newDevice: device)
+                            self?.delegate?.replaceMonitoredDevice(oldUUID: matched.uuid, with: device)
                         }
                     } else {
                         DispatchQueue.main.async { [weak self] in self?.delegate?.newDevice(device: device) }
@@ -889,10 +938,12 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 }
                 // Post-hoc MAC correlation if MAC was just resolved
                 if !hadMAC, let mac = device.macAddr, let matched = findKnownDeviceByMAC(newMAC: mac, knownDevices: devices.filter { $0.key != peripheral.identifier }) {
+                    macInheritLog(" Late-correlation(update): merging \(peripheral.identifier) -> \(matched.uuid)")
                     print("Late correlation (update): merging \(peripheral.identifier) into \(matched.uuid)")
                     devices.removeValue(forKey: matched.uuid)
+                    remapMonitoredUUID(from: matched.uuid, to: peripheral.identifier, peripheral: peripheral)
                     DispatchQueue.main.async { [weak self] in
-                        self?.delegate?.mergeDevice(oldUUID: matched.uuid, newDevice: device)
+                        self?.delegate?.replaceMonitoredDevice(oldUUID: matched.uuid, with: device)
                     }
                 } else {
                     device.logNameResolutionIfNeeded(context: "discover:update")
@@ -931,7 +982,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
         guard !monitoringSuspended else { return }
         guard let state = monitoredState(for: peripheral) else { return }
-        let rssi = RSSI.intValue > 0 ? 0 : RSSI.intValue
+        let rssi = RSSI.intValue > 0 ? -100 : RSSI.intValue
         updateMonitoredState(state, rssi: rssi)
         state.lastReadAt = Date().timeIntervalSince1970
 
@@ -940,7 +991,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             if !scanMode {
                 centralMgr.stopScan()
             }
-            state.activeModeTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true, block: { [weak self, weak state, weak peripheral] _ in
+            state.activeModeTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true, block: { [weak self, weak state, weak peripheral] _ in
                 guard let self = self, let state = state, let peripheral = peripheral else { return }
                 if Date().timeIntervalSince1970 > state.lastReadAt + 10 {
                     print("Falling back to passive mode for \(state.uuid)")
