@@ -21,6 +21,7 @@ This document is also available in [Japanese (日本語版はこちら)](README.
 - Optionally wakes from display sleep
 - Optionally pauses and unpauses music/video playback when you're away and back
 - Password is securely stored in Keychain
+- Devices with resolved MAC addresses appear in black; unresolved devices appear in gray, for at-a-glance distinction.
 - Hold ⌥ (Option) in the device list to reveal full MAC address and UUID. Release and reopen for compact display. (Menu width shrink requires closing and reopening due to system limitation.)
 
 ## Security Notice
