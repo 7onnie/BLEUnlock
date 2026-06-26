@@ -902,6 +902,15 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                         mergedViaMAC = true
                         if didRemap {
                             delegate?.replaceMonitoredDevice(oldUUID: matchedDevice.uuid, with: device)
+                        } else {
+                            let oldDevice = Device(uuid: matchedDevice.uuid)
+                            oldDevice.blName = matchedDevice.blName
+                            oldDevice.macAddr = matchedDevice.macAddr
+                            let oldUUID = matchedDevice.uuid
+                            DispatchQueue.main.async { [weak self] in
+                                self?.delegate?.removeDevice(device: oldDevice)
+                                self?.delegate?.newDevice(device: device)
+                            }
                         }
                         
                         central.connect(peripheral, options: nil)
