@@ -297,9 +297,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                 NSEvent.removeMonitor(monitor)
                 flagsEventMonitor = nil
             }
+            let wasShowingDetails = deviceMenuShowDetails
             deviceMaxTitleWidth.removeAll()
             setDeviceMenuShowDetails(false, forceRefresh: true)
-            replaceDeviceMenuInstancePreservingItems()
+            if wasShowingDetails {
+                replaceDeviceMenuInstancePreservingItems()
+            }
         }
     }
     
