@@ -634,6 +634,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
 
     func configureDeviceMenuView(_ menuItem: NSMenuItem, uuid: UUID, title: String) -> NSButton {
         let checkbox = configuredDeviceCheckbox(uuid: uuid, title: title)
+        let resolved = ble.devices[uuid]?.macAddr != nil
+        let color = resolved ? NSColor.controlTextColor : NSColor.secondaryLabelColor
+        checkbox.attributedTitle = NSAttributedString(string: title, attributes: [.foregroundColor: color])
         let fittingSize = checkbox.fittingSize
         let height = max(24, fittingSize.height + 4)
         let currentWidth = max(300, fittingSize.width + 28)
@@ -648,7 +651,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
 
     func updateDeviceCheckbox(_ checkbox: NSButton, uuid: UUID, title: String) {
         checkbox.identifier = NSUserInterfaceItemIdentifier(uuid.uuidString)
-        checkbox.title = title
+        let resolved = ble.devices[uuid]?.macAddr != nil
+        let color = resolved ? NSColor.controlTextColor : NSColor.secondaryLabelColor
+        checkbox.attributedTitle = NSAttributedString(string: title, attributes: [.foregroundColor: color])
         checkbox.state = ble.isMonitoring(uuid: uuid) ? .on : .off
         let fittingSize = checkbox.fittingSize
         if let container = checkbox.superview {
