@@ -532,21 +532,6 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
 
-    func setPassiveMode(_ mode: Bool) {
-        passiveMode = mode
-        if passiveMode {
-            for state in monitoredStates.values {
-                state.activeModeTimer?.invalidate()
-                state.activeModeTimer = nil
-                state.connectionTimer?.invalidate()
-                state.connectionTimer = nil
-                if let p = state.peripheral {
-                    centralMgr.cancelPeripheralConnection(p)
-                }
-            }
-        }
-        scanForPeripherals()
-    }
 
     func suspendMonitoringForSystemSleep() {
         guard !monitoringSuspended else { return }
@@ -737,14 +722,14 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
     
-    /// Median-of-3 filter: maintains a sliding window of the 3 most recent raw RSSI
+    /// Median-of-5 filter: maintains a sliding window of the 5 most recent raw RSSI
     /// values and outputs the median. Single outliers (±20 dBm spikes) are completely
-    /// eliminated, while real trends track within 1 sample (2 seconds).
+    /// eliminated, while real trends track within 2 samples.
     func getEstimatedRSSI(state: MonitoredDeviceState, rssi: Int) -> Int {
         // Ignore invalid readings that would corrupt the median window
         guard rssi < 0 else { return state.lastRSSI ?? rssi }
         state.rssiWindow.append(rssi)
-        if state.rssiWindow.count > 3 {
+        if state.rssiWindow.count > 5 {
             state.rssiWindow.removeFirst()
         }
         let sorted = state.rssiWindow.sorted()
@@ -845,7 +830,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         if let state = monitoredStates[peripheral.identifier], !monitoringSuspended {
             state.peripheral = peripheral
             updateMonitoredState(state, rssi: rssi)
-            if !state.active && !passiveMode {
+            if !state.active {
                 connectMonitoredPeripheral(state)
             }
         }
@@ -1018,11 +1003,11 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             centralMgr.cancelPeripheralConnection(peripheral)
             return
         }
-        if let state = monitoredState(for: peripheral), !passiveMode {
-            print("Connected \(state.uuid)")
+        if let state = monitoredState(for: peripheral) {
+            print("Connected \(state.uuid) — disconnecting, RSSI via ads only")
             state.connectionTimer?.invalidate()
             state.connectionTimer = nil
-            peripheral.readRSSI()
+            centralMgr.cancelPeripheralConnection(peripheral)
         }
     }
 
@@ -1037,7 +1022,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         updateMonitoredState(state, rssi: rssi)
         state.lastReadAt = Date().timeIntervalSince1970
 
-        if state.activeModeTimer == nil && !passiveMode {
+        if state.activeModeTimer == nil {
             print("Entering active mode for \(state.uuid)")
             if !scanMode {
                 centralMgr.stopScan()
