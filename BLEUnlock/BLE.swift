@@ -2,26 +2,7 @@ import Foundation
 import CoreBluetooth
 import IOBluetooth
 
-func macInheritLog(_ message: String) {
-    let df = DateFormatter()
-    df.dateFormat = "HH:mm:ss.SSS"
-    let ts = df.string(from: Date())
-    let line = "[BLEUnlock][MACInherit] \(ts) " + message + "\n"
-    let data = Data(line.utf8)
-    let fm = FileManager.default
-    let dir = fm.urls(for: .libraryDirectory, in: .userDomainMask).first!
-        .appendingPathComponent("Logs/BLEUnlock", isDirectory: true)
-    try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
-    let url = dir.appendingPathComponent("mac-inherit.log")
-    if !fm.fileExists(atPath: url.path) {
-        fm.createFile(atPath: url.path, contents: nil)
-    }
-    if let h = FileHandle(forWritingAtPath: url.path) {
-        h.seekToEndOfFile()
-        h.write(data)
-        h.closeFile()
-    }
-}
+func macInheritLog(_ message: String) {}
 
 
 let DeviceInformation = CBUUID(string:"180A")
@@ -46,25 +27,7 @@ func nameResolutionLogURL() -> URL? {
     return logsDirectory.appendingPathComponent("name-resolution.log", isDirectory: false)
 }
 
-func appendNameResolutionLog(_ message: String) {
-    let df = DateFormatter()
-    df.dateFormat = "HH:mm:ss.SSS"
-    let ts = df.string(from: Date())
-    let line = ts + " " + message + "\n"
-    let data = Data(line.utf8)
-    let fileManager = FileManager.default
-    guard let logURL = nameResolutionLogURL() else { return }
-    let path = logURL.path
-
-    if !fileManager.fileExists(atPath: path) {
-        fileManager.createFile(atPath: path, contents: nil)
-    }
-
-    guard let handle = FileHandle(forWritingAtPath: path) else { return }
-    handle.seekToEndOfFile()
-    handle.write(data)
-    handle.closeFile()
-}
+func appendNameResolutionLog(_ message: String) {}
 
 // MARK: - Cached system lookups (avoid redundant disk I/O)
 
