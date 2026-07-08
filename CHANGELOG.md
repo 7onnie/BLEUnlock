@@ -1,5 +1,9 @@
 # Release Notes
 
+## 1.15.1
+
+- Update-pipeline end-to-end test release
+
 ## 1.15.0
 
 - Maintained fork continues at [7onnie/BLEUnlock](https://github.com/7onnie/BLEUnlock) (based on Skyearn/BLEUnlock 1.14.x)
