@@ -64,12 +64,13 @@ jobs:
         env:
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
+          APP_PATH="build/Build/Products/Release/BLEUnlock.app"
           if [ -z "${MACOS_SIGNING_IDENTITY}" ]; then
-            echo "MACOS_SIGNING_IDENTITY is not set. Skipping code signing."
+            echo "MACOS_SIGNING_IDENTITY is not set. Ad-hoc signing instead."
+            /usr/bin/codesign --force --deep --sign - "${APP_PATH}"
             exit 0
           fi
 
-          APP_PATH="build/Build/Products/Release/BLEUnlock.app"
           ENTITLEMENTS_PATH="BLEUnlock/BLEUnlock.entitlements"
           /usr/bin/codesign --force --deep --options runtime --entitlements "${ENTITLEMENTS_PATH}" --sign "${MACOS_SIGNING_IDENTITY}" "${APP_PATH}"
 
@@ -88,6 +89,7 @@ jobs:
             "${APP_PATH}" \
             "${DEST_DIR}"
           mv "${DEST_DIR}/BLEUnlock.dmg" "${DEST_DIR}/BLEUnlock-${RELEASE_TAG}.dmg"
+          /usr/bin/ditto -c -k --keepParent "${APP_PATH}" "${DEST_DIR}/BLEUnlock-${RELEASE_TAG}.zip"
 
 
       - name: Merge Changelog
@@ -136,51 +138,12 @@ jobs:
         run: |
           DMG_PATH="build/Build/Products/Release/BLEUnlock-${RELEASE_TAG}.dmg"
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" "${DMG_PATH}" --clobber
+            gh release upload "${RELEASE_TAG}" "${DMG_PATH}" "build/Build/Products/Release/BLEUnlock-${RELEASE_TAG}.zip" --clobber
             gh release edit "${RELEASE_TAG}" --title "${RELEASE_TAG}" --notes-file <(awk "/^## ${RELEASE_TAG#v}/{found=1; next} /^## /{found=0; exit} found" CHANGELOG.md)
           else
             gh release create "${RELEASE_TAG}" \
               "${DMG_PATH}" \
+              "build/Build/Products/Release/BLEUnlock-${RELEASE_TAG}.zip" \
               --title "${RELEASE_TAG}" \
               --notes-file <(awk "/^## ${RELEASE_TAG#v}/{found=1; next} /^## /{found=0; exit} found" CHANGELOG.md)
           fi
-
-      - name: Update Homebrew Tap
-        env:
-          TAP_PUSH_TOKEN: ${{ secrets.TAP_PUSH_TOKEN }}
-        run: |
-          if [ -z "${TAP_PUSH_TOKEN}" ]; then
-            echo "TAP_PUSH_TOKEN is not set. Skipping Homebrew tap update."
-            exit 0
-          fi
-
-          VERSION="${RELEASE_TAG#v}"
-          DMG_PATH="build/Build/Products/Release/BLEUnlock-${RELEASE_TAG}.dmg"
-          SHA256="$(shasum -a 256 "${DMG_PATH}" | awk '{print $1}')"
-          TAP_DIR="${RUNNER_TEMP}/homebrew-tap"
-          CASK_PATH="${TAP_DIR}/Casks/bleunlock.rb"
-
-          git clone "https://x-access-token:${TAP_PUSH_TOKEN}@github.com/Skyearn/homebrew-tap.git" "${TAP_DIR}"
-
-          python3 - <<PY
-          from pathlib import Path
-
-          path = Path("${CASK_PATH}")
-          text = path.read_text()
-          text = text.replace(text.split('version "')[1].split('"')[0], "${VERSION}", 1)
-          text = text.replace(text.split('sha256 "')[1].split('"')[0], "${SHA256}", 1)
-          path.write_text(text)
-          PY
-
-          cd "${TAP_DIR}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          if git diff --quiet -- Casks/bleunlock.rb; then
-            echo "Homebrew tap is already up to date."
-            exit 0
-          fi
-
-          git add Casks/bleunlock.rb
-          git commit -m "Update BLEUnlock to ${RELEASE_TAG}"
-          git push origin main

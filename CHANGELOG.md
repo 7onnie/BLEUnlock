@@ -1,5 +1,12 @@
 # Release Notes
 
+## 1.15.0
+
+- Maintained fork continues at [7onnie/BLEUnlock](https://github.com/7onnie/BLEUnlock) (based on Skyearn/BLEUnlock 1.14.x)
+- Unlock is now gated on the smoothed (median-filtered) RSSI plus a minimum sample count — a single spurious RSSI spike can no longer unlock the Mac
+- New "Disable on This Network" menu item: BLEUnlock pauses automatically outside allow-listed networks, keyed on the default gateway's MAC address (permission-free)
+- In-app update installer for fork releases (zip asset, no Gatekeeper friction)
+- Update checker now follows 7onnie/BLEUnlock releases
 
 ## 1.14.3
 
