@@ -149,6 +149,7 @@ func notifyUpdateAvailable() {
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemValidation, NSUserNotificationCenterDelegate, UNUserNotificationCenterDelegate, BLEDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let ble = BLE()
+    let networkMonitor = NetworkMonitor()
     let mainMenu = NSMenu()
     var deviceMenu = NSMenu()
     let unlockSettingsMenu = NSMenu()
@@ -181,6 +182,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     var unlockedAt = 0.0
     var inScreensaver = false
     var lastRSSI: Int? = nil
+    var pausedByNetwork = true
+    var disableOnNetworkMenuItem: NSMenuItem?
     var deviceMenuIsOpen = false
     var deviceMenuNeedsReorder = false
     var deviceMenuNeedsRefresh = false
@@ -1504,6 +1507,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     }
 
     func updatePresence(shouldUnlock: Bool, shouldLock: Bool, reason: String) {
+        guard !pausedByNetwork else { return }
         if manualLock && shouldLock {
             manualLock = false
             if shouldUnlock {
@@ -1597,6 +1601,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     }
     
     func tryUnlockScreen(retryCount: Int = 0) {
+        guard !pausedByNetwork else { return }
         guard !manualLock else { return }
         guard ble.presence else { return }
         guard ble.unlockRSSI != ble.UNLOCK_DISABLED else { return }
@@ -2066,6 +2071,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         ble.setPassiveMode(passiveMode)
     }
 
+    @objc func toggleDisableOnThisNetwork(_ menuItem: NSMenuItem) {
+        // Gateway resolution blocks (route/ping/arp); do it off the main queue.
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let mac = self.networkMonitor.resolveGatewayMAC() else {
+                DispatchQueue.main.async { self.errorModal(t("network_not_identified")) }
+                return
+            }
+            DispatchQueue.main.async {
+                var list = self.networkMonitor.allowlist
+                if list.contains(mac) {
+                    list.remove(mac)
+                } else {
+                    list.insert(mac)
+                }
+                self.networkMonitor.allowlist = list
+                self.networkMonitor.networkChanged() // recompute pause state now
+            }
+        }
+    }
+
     @objc func toggleWakeWithoutUnlocking(_ menuItem: NSMenuItem) {
         let wakeWithoutUnlocking = !prefs.bool(forKey: "wakeWithoutUnlocking")
         prefs.set(wakeWithoutUnlocking, forKey: "wakeWithoutUnlocking")
@@ -2328,7 +2353,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
 
         item = mainMenu.addItem(withTitle: t("passive_mode"), action: #selector(togglePassiveMode), keyEquivalent: "")
         item.state = prefs.bool(forKey: "passiveMode") ? .on : .off
-        
+
+        disableOnNetworkMenuItem = mainMenu.addItem(withTitle: t("disable_on_this_network"),
+                                                    action: #selector(toggleDisableOnThisNetwork),
+                                                    keyEquivalent: "")
+        disableOnNetworkMenuItem?.state = networkMonitor.paused ? .on : .off
+
         item = mainMenu.addItem(withTitle: t("launch_at_login"), action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         // Defer smd XPC to serial queue to avoid blocking main thread / concurrent smd calls.
         item.state = .off
@@ -2562,6 +2592,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             }
         }
         startPermissionRecovery(promptAccessibility: true)
+        networkMonitor.onPauseStateChange = { [weak self] paused in
+            guard let self = self else { return }
+            self.pausedByNetwork = paused
+            self.disableOnNetworkMenuItem?.state = paused ? .on : .off
+            if !paused {
+                // Spec: never let stale samples carry a decision across a pause.
+                self.ble.clearSmoothingWindows()
+            }
+            print("Network pause state: \(paused)")
+        }
+        networkMonitor.start()
         runAutomaticUpdateCheck()
         if prefs.bool(forKey: "pauseItunes") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
