@@ -13,6 +13,7 @@
 "enter_rssi_threshold" = "Enter Minimum RSSI";
 "enter_rssi_threshold_info" = "Device whose RSSI is less than this value will be ignored while scanning.";
 "farther" = "⬇Farther";
+"install_update" = "Install Update";
 "launch_at_login" = "Launch at Login";
 "lock_delay" = "Delay to Lock";
 "lock_now" = "Lock Screen Now";
@@ -58,6 +59,7 @@
 "update_available_message" = "BLEUnlock %1$@ is available.";
 "update_available_title" = "Update Available";
 "update_check_failed" = "Failed to Check for Updates";
+"update_install_failed" = "Failed to Install Update";
 "update_up_to_date" = "BLEUnlock is up to date.";
 "updates" = "Updates";
 "updates_available" = "Updates (Available)";

@@ -10,6 +10,7 @@
 "enter_rssi_threshold" = "Minimum RSSI eingeben";
 "enter_rssi_threshold_info" = "Gerät mit geringerem RSSI als diesem Wert wird beim Scannen ignoriert.";
 "farther" = "⬇weiter";
+"install_update" = "Update installieren";
 "launch_at_login" = "Beim Login starten";
 "lock_delay" = "Sperrverzögerung";
 "lock_now" = "Jetzt sperren";
@@ -37,6 +38,7 @@
 "set_rssi_threshold" = "Setze Minimum RSSI…";
 "sleep_display" = "Bildschirm beim Sperren ausschalten";
 "timeout" = "Kein-Signal Zeitablauf";
+"update_install_failed" = "Update-Installation fehlgeschlagen";
 "unlock_settings" = "Unlock Settings";
 "unlock_rssi" = "RSSI entsperren";
 "use_screensaver_to_lock" = "Den Bildschirmschoner verwenden zum Sperren";

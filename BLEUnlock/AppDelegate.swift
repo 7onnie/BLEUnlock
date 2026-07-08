@@ -2131,14 +2131,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                     alert.informativeText = String(format: t("update_available_message"), version)
                     alert.window.title = "BLEUnlock"
                     if downloadURL != nil {
-                        alert.addButton(withTitle: t("download_update"))
+                        let isZip = downloadURL?.pathExtension.lowercased() == "zip"
+                        alert.addButton(withTitle: t(isZip ? "install_update" : "download_update"))
                     }
                     alert.addButton(withTitle: t("open_releases"))
                     alert.addButton(withTitle: t("cancel"))
                     NSApp.activate(ignoringOtherApps: true)
                     let response = alert.runModal()
                     if response == .alertFirstButtonReturn {
-                        if let downloadURL {
+                        if let downloadURL, downloadURL.pathExtension.lowercased() == "zip" {
+                            installUpdate(fromZip: downloadURL) { errorMessage in
+                                if let errorMessage {
+                                    DispatchQueue.main.async {
+                                        self.errorModal(t("update_install_failed"), info: errorMessage)
+                                    }
+                                }
+                            }
+                        } else if let downloadURL {
                             NSWorkspace.shared.open(downloadURL)
                         } else {
                             NSWorkspace.shared.open(releaseURL)

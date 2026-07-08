@@ -155,15 +155,14 @@ private func compareVersions(releaseInfo: ReleaseInfo, shouldNotify: Bool) -> Up
             notified = true
         }
         return .available(version: releaseInfo.version,
-                          downloadURL: latestDMGDownloadURL(from: releaseInfo.assets),
+                          downloadURL: preferredDownloadURL(from: releaseInfo.assets),
                           releaseURL: releaseInfo.releaseURL)
     }
 
     return .upToDate
 }
 
-private func latestDMGDownloadURL(from assets: [ReleaseAsset]) -> URL? {
-    assets.first {
-        $0.name.lowercased().hasSuffix(".dmg")
-    }?.downloadURL
+private func preferredDownloadURL(from assets: [ReleaseAsset]) -> URL? {
+    guard let name = preferredUpdateAssetName(assets.map({ $0.name })) else { return nil }
+    return assets.first { $0.name == name }?.downloadURL
 }
