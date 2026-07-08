@@ -4,6 +4,7 @@
 "closer" = "⬆näher";
 "device" = "Gerät";
 "device_not_set" = "Kein Gerät ausgewählt";
+"disable_on_this_network" = "In diesem Netzwerk deaktivieren";
 "disabled" = "Ausgeschalten";
 "enter_password" = "Passwort eingeben, um den Sperrschirm zu entsperren.";
 "enter_rssi_threshold" = "Minimum RSSI eingeben";
@@ -15,6 +16,7 @@
 "lock_rssi" = "RSSI Sperren";
 "minute" = "Minute";
 "minutes" = "Minuten";
+"network_not_identified" = "Aktuelles Netzwerk nicht identifizierbar (kein IPv4-Gateway gefunden).";
 "not_detected" = "Kein Signal entdeckt";
 "notification_device_away" = "Gerät ist entfernt";
 "notification_locked" = "Dieses Gerät wurde durch BLEUnlock gesperrt";
