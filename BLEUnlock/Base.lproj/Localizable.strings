@@ -7,6 +7,7 @@
 "download_update" = "Download";
 "device" = "Device";
 "device_not_set" = "Device not selected";
+"disable_on_this_network" = "Disable on This Network";
 "disabled" = "Disable";
 "enter_password" = "Enter password to unlock the lock screen.";
 "enter_rssi_threshold" = "Enter Minimum RSSI";
@@ -35,6 +36,7 @@
 "unlock_settings" = "Unlock Settings";
 "any_short" = "Any";
 "all_short" = "All";
+"network_not_identified" = "Could not identify the current network (no IPv4 gateway found).";
 "not_detected" = "Signal not detected";
 "notification_device_away" = "Device is away";
 "notification_locked" = "This computer has been locked by BLEUnlock";
