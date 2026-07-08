@@ -64,14 +64,19 @@ Er wird als einmaliger Import übernommen und danach periodisch nachgemergt.
 - `checkUpdate.swift`: Release-API-URL von `Skyearn/BLEUnlock` auf
   `7onnie/BLEUnlock` umbiegen. Alle weiteren GitHub-Links (AboutBox,
   AppDelegate "releases"-Link) ebenfalls auf `7onnie`.
-- Skyearns Auto-Download-Updater bleibt aktiv, wird aber gehärtet
-  (Konsens-Review, 3/3):
+- **Korrektur (2026-07-08, nach Code-Lektüre):** Skyearns Updater installiert
+  NICHT selbst — er notifiziert und öffnet den DMG-Download im Browser. Ein
+  Browser-Download wird immer quarantiniert → Gatekeeper-Reibung bei jedem
+  Update. Der Fork ergänzt daher (Intent des Konsens-Reviews, 3/3):
+  - **Zip-Asset** zusätzlich zum DMG im Release.
+  - **In-App-Installer**: lädt das Zip per URLSession (setzt für diese App
+    keine Quarantäne), entpackt, `xattr -cr` (Gürtel-und-Hosenträger),
+    ersetzt das Bundle, relauncht. Auslösung per Klick im Update-Dialog.
   - **CI ad-hoc-signiert** jedes Release: `codesign --force --deep --sign -`
-    auf die .app vor dem Zippen (braucht keinen Developer-Account, keine Secrets).
-  - **Updater entfernt Quarantäne** nach dem Entpacken der neuen App
-    (`xattr -cr` via `Process`), bevor die alte App ersetzt wird
-    (Gürtel-und-Hosenträger gegen Gatekeeper-Self-Brick).
-  - Prüfen, dass `LSFileQuarantineEnabled` nicht im Info.plist gesetzt ist.
+    (braucht keinen Developer-Account; auf Apple Silicon Startvoraussetzung —
+    Skyearns CI baut mit `CODE_SIGNING_ALLOWED=NO` komplett unsigniert).
+  - Prüfen, dass `LSFileQuarantineEnabled` nicht im Info.plist gesetzt ist
+    (verifiziert: ist nicht gesetzt).
 - Release-Pipeline: Skyearns `release.yml` übernehmen (läuft ohne
   Signing-Secrets, überspringt den Cert-Import sauber), um den
   Ad-hoc-Signing-Step ergänzen. Trigger: Tag-Push.
