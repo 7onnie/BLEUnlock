@@ -438,6 +438,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     var lockRSSI = -80
     var unlockRSSI = -60
     var proximityTimeout = 5.0
+    var unlockMinSamples = 3   // window must hold >= this many readings before an unlock
     var signalTimeout = 60.0
     var powerWarn = true
     var passiveMode = false
@@ -715,16 +716,23 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     }
 
     func updateMonitoredState(_ state: MonitoredDeviceState, rssi: Int) {
-        if rssi >= (unlockRSSI == UNLOCK_DISABLED ? lockRSSI : unlockRSSI) && !state.presence {
-            print("Device \(state.uuid) is close")
-            state.presence = true
-            state.rssiWindow.removeAll()
-            updateAggregatePresence(reason: "close")
-        }
-
+        // Smooth first, so every decision below uses the median-filtered value.
         let estimatedRSSI = getEstimatedRSSI(state: state, rssi: rssi)
         state.lastRSSI = estimatedRSSI
         updateAggregateRSSI()
+
+        let unlockThreshold = (unlockRSSI == UNLOCK_DISABLED ? lockRSSI : unlockRSSI)
+        if shouldUnlock(estimatedRSSI: estimatedRSSI,
+                        sampleCount: state.rssiWindow.count,
+                        unlockThreshold: unlockThreshold,
+                        minSamples: unlockMinSamples,
+                        isPresent: state.presence) {
+            print("Device \(state.uuid) is close")
+            state.presence = true
+            // NOTE: the window is intentionally NOT cleared here — clearing made the very
+            // next sample drive the LOCK decision off a single raw value (see RSSIDecision.swift).
+            updateAggregatePresence(reason: "close")
+        }
 
         if estimatedRSSI >= (lockRSSI == LOCK_DISABLED ? unlockRSSI : lockRSSI) {
             if let timer = state.proximityTimer {
@@ -746,6 +754,15 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             print("Proximity timer started for \(state.uuid)")
         }
         resetSignalTimer(for: state)
+    }
+
+    /// Drop all per-device smoothing state so stale samples can't carry a decision
+    /// across a monitoring pause (Wi-Fi auto-pause resume, device list changes).
+    func clearSmoothingWindows() {
+        for state in monitoredStates.values {
+            state.rssiWindow.removeAll()
+            state.lastRSSI = nil
+        }
     }
 
     func monitoredState(for peripheral: CBPeripheral) -> MonitoredDeviceState? {
