@@ -294,6 +294,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		3D7C0F8022769F1F005A4C43 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -307,7 +308,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
-			shellScript = "buildNumber=$(/usr/libexec/PlistBuddy -c \"Print CFBundleVersion\" \"${PROJECT_DIR}/${INFOPLIST_FILE}\")\nbuildNumber=$(($buildNumber + 1))\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $buildNumber\" \"${PROJECT_DIR}/${INFOPLIST_FILE}\"\n";
+			shellScript = "set -e\n\nINFO_PLIST=\"${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}/Contents/Info.plist\"\nif [ ! -f \"${INFO_PLIST}\" ]; then\n  exit 0\nfi\n\nGIT_TAG=$(git -C \"${SRCROOT}\" describe --tags --exact-match 2>/dev/null || true)\nif [ -n \"${GIT_TAG}\" ]; then\n  VERSION=\"${GIT_TAG#v}\"\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleShortVersionString ${VERSION}\" \"${INFO_PLIST}\"\nfi\n\nBUILD_NUM=\"\"\nif [ -n \"${GITHUB_RUN_NUMBER:-}\" ]; then\n  BUILD_NUM=\"${GITHUB_RUN_NUMBER}\"\nelse\n  BUILD_NUM=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null || true)\nfi\n\nif [ -n \"${BUILD_NUM}\" ]; then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion ${BUILD_NUM}\" \"${INFO_PLIST}\" || \\\n  /usr/libexec/PlistBuddy -c \"Add :CFBundleVersion string ${BUILD_NUM}\" \"${INFO_PLIST}\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -394,7 +395,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = jp.sone.BLEUnlock.Launcher;
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.Skyearn.BLEUnlock.Launcher;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -418,7 +419,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = jp.sone.BLEUnlock.Launcher;
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.Skyearn.BLEUnlock.Launcher;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_VERSION = 5.0;
@@ -550,10 +551,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = BLEUnlock/BLEUnlock.entitlements;
-				CODE_SIGN_IDENTITY = "-";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = 42LGPQYC7M;
+				DEVELOPMENT_TEAM = 97QZQ678P7;
 				ENABLE_HARDENED_RUNTIME = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
 				INFOPLIST_FILE = BLEUnlock/Info.plist;
@@ -561,8 +562,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = "";
-				PRODUCT_BUNDLE_IDENTIFIER = jp.sone.BLEUnlock;
+				MARKETING_VERSION = 1.13.6;
+				CURRENT_PROJECT_VERSION = 1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.Skyearn.BLEUnlock;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OBJC_BRIDGING_HEADER = "BLEUnlock/BLEUnlock-Bridging-Header.h";
@@ -581,10 +583,10 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = BLEUnlock/BLEUnlock.entitlements;
-				CODE_SIGN_IDENTITY = "Developer ID Application";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				DEVELOPMENT_TEAM = 42LGPQYC7M;
+				DEVELOPMENT_TEAM = 97QZQ678P7;
 				ENABLE_HARDENED_RUNTIME = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
 				INFOPLIST_FILE = BLEUnlock/Info.plist;
@@ -592,8 +594,9 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = "";
-				PRODUCT_BUNDLE_IDENTIFIER = jp.sone.BLEUnlock;
+				MARKETING_VERSION = 1.13.6;
+				CURRENT_PROJECT_VERSION = 1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.github.Skyearn.BLEUnlock;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OBJC_BRIDGING_HEADER = "BLEUnlock/BLEUnlock-Bridging-Header.h";
