@@ -2608,6 +2608,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             if !paused {
                 // Spec: never let stale samples carry a decision across a pause.
                 self.ble.clearSmoothingWindows()
+                // Replay the state change that the pause guard suppressed while paused.
+                self.updatePresence(shouldUnlock: self.ble.presence,
+                                    shouldLock: self.ble.shouldLock,
+                                    reason: "away")
             }
             print("Network pause state: \(paused)")
         }
