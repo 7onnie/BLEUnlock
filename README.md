@@ -9,7 +9,9 @@
 > macOS will refuse to open the app. Either allow it under *System Settings → Privacy &
 > Security → Open Anyway*, or run:
 > `xattr -dr com.apple.quarantine /Applications/BLEUnlock.app`
-> Subsequent updates installed via the in-app updater need no further approval.
+> Updates installed via the in-app updater trigger no new Gatekeeper prompt. macOS may
+> however re-ask for Accessibility/Bluetooth permissions after an update, because ad-hoc
+> signatures change with every build.
 
 ## Please note that I don't distribute this app on the Mac App Store. You can find it here for free! 
 
