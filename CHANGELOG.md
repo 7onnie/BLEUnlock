@@ -1,5 +1,10 @@
 # Release Notes
 
+## 1.15.7
+
+- New **Trust Updater Certificate…** menu item: trust the fork's signing certificate for code signing (one Touch ID prompt, no sudo) so Bluetooth/Accessibility/Keychain permissions persist across updates instead of being re-requested each time. The Update Available dialog offers this before updating, and Check Permissions shows the trust status.
+- About box now credits this as 7onnie's fork (based on Skyearn, originally by Takeshi Sone).
+
 ## 1.15.6
 
 - Faster, smarter auto-lock: BLEUnlock now reacts to the *trajectory* of the signal, not just its level. When you walk away and the signal falls off and drops out, the Mac locks within a few seconds instead of waiting the full no-signal timeout; a brief Bluetooth dropout while you are present still waits a short grace period. Unlocking is unchanged. (Active-mode connections only; passive-scan monitoring keeps the configured timeout.)
