@@ -2,8 +2,11 @@
 
 ## 请注意：本应用不在 Mac App Store 发布，你可以在这里免费获取。
 
+<!-- BADGES:START -->
 ![CI](https://github.com/7onnie/BLEUnlock/actions/workflows/test.yml/badge.svg)
 ![Github All Releases](https://img.shields.io/github/downloads/7onnie/BLEUnlock/total.svg)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/7onnie)
+<!-- BADGES:END -->
 
 BLEUnlock 是一款常驻菜单栏的小工具，可以根据 iPhone、Apple Watch 或其他蓝牙低功耗设备与 Mac 的距离，自动锁定或解锁 Mac。
 
