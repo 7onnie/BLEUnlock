@@ -89,3 +89,11 @@
 "wake_on_proximity" = "Aufwachen bei Annäherung";
 "wake_without_unlocking" = "Aufwachen ohne Entsperren";
 "pair_for_mac_hint" = "Pair to stabilize random address tracking →";
+"trust_updater_certificate" = "Updater-Zertifikat vertrauen…";
+"cert_trust_title" = "Dem Updater-Zertifikat vertrauen?";
+"cert_trust_explain" = "BLEUnlocks Releases sind mit einem eigenen Zertifikat signiert. Wenn du ihm fürs Code-Signing vertraust (eine Touch-ID-/Passwort-Abfrage), behält macOS deine Bluetooth-, Bedienungshilfen- und Passwort-Freigaben über Updates hinweg, statt jedes Mal neu zu fragen.\n\nSicherheit: Danach gilt jede mit diesem Zertifikat signierte App auf diesem Mac als vertrauenswürdig fürs Code-Signing. Nur der Maintainer besitzt den privaten Schlüssel. Rückgängig: „BLEUnlock Fork Signing\" in der Schlüsselbundverwaltung entfernen oder ausführen: security delete-certificate -c \"BLEUnlock Fork Signing\"";
+"cert_trust_confirm" = "Vertrauen";
+"cert_trust_done" = "Zertifikat vertraut. Künftige Updates behalten deine Freigaben.";
+"cert_trust_failed" = "Zertifikat konnte nicht vertraut werden.";
+"cert_trust_no_resource" = "Das mitgelieferte Zertifikat wurde nicht gefunden.";
+"cert_already_trusted" = "Das Updater-Zertifikat ist bereits vertrauenswürdig. Updates behalten deine Freigaben.";

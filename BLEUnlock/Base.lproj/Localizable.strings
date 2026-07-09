@@ -89,3 +89,11 @@
 "wake_on_proximity" = "Wake on Proximity";
 "wake_without_unlocking" = "Wake without Unlocking";
 "pair_for_mac_hint" = "Pair to stabilize random address tracking →";
+"trust_updater_certificate" = "Trust Updater Certificate…";
+"cert_trust_title" = "Trust the Updater Certificate?";
+"cert_trust_explain" = "BLEUnlock's releases are signed with its own certificate. Trusting it for code signing (one Touch ID / password prompt) lets macOS keep your Bluetooth, Accessibility, and saved-password permissions across updates instead of re-asking every time.\n\nSecurity: after this, any app signed with this certificate is trusted for code signing on this Mac. Only the maintainer holds the private key. To undo later, remove \"BLEUnlock Fork Signing\" in Keychain Access, or run: security delete-certificate -c \"BLEUnlock Fork Signing\"";
+"cert_trust_confirm" = "Trust";
+"cert_trust_done" = "Certificate trusted. Future updates will keep your permissions.";
+"cert_trust_failed" = "Could not trust the certificate.";
+"cert_trust_no_resource" = "The bundled certificate could not be found.";
+"cert_already_trusted" = "The updater certificate is already trusted. Updates keep your permissions.";
