@@ -153,6 +153,8 @@ func notifyUpdateAvailable() {
     }
 }
 
+private enum UpdateDialogAction { case trustFirst, install, browserDownload, openReleases, cancel }
+
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemValidation, NSUserNotificationCenterDelegate, UNUserNotificationCenterDelegate, BLEDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -2158,20 +2160,43 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                 case .available(let version, let downloadURL, let releaseURL):
                     savePendingUpdate(version: version, downloadURL: downloadURL, releaseURL: releaseURL)
                     self.refreshUpdateMenuItems()
+                    let trusted = self.isUpdaterCertTrusted()
                     let alert = NSAlert()
                     alert.messageText = t("update_available_title")
-                    alert.informativeText = String(format: t("update_available_message"), version)
+                    var body = String(format: t("update_available_message"), version)
+                    if !trusted { body += "\n\n" + t("update_untrusted_hint") }
+                    alert.informativeText = body
                     alert.window.title = "BLEUnlock"
-                    if downloadURL != nil {
-                        let isZip = downloadURL?.pathExtension.lowercased() == "zip"
-                        alert.addButton(withTitle: t(isZip ? "install_update" : "download_update"))
+
+                    // Build buttons and a parallel action list so response handling
+                    // never depends on hard-coded first/second/third indices.
+                    var actions: [UpdateDialogAction] = []
+                    if !trusted {
+                        alert.addButton(withTitle: t("trust_certificate_first")); actions.append(.trustFirst)
                     }
-                    alert.addButton(withTitle: t("open_releases"))
-                    alert.addButton(withTitle: t("cancel"))
+                    if let downloadURL {
+                        let isZip = downloadURL.pathExtension.lowercased() == "zip"
+                        alert.addButton(withTitle: t(isZip ? "install_update" : "download_update"))
+                        actions.append(isZip ? .install : .browserDownload)
+                    }
+                    alert.addButton(withTitle: t("open_releases")); actions.append(.openReleases)
+                    alert.addButton(withTitle: t("cancel")); actions.append(.cancel)
+
                     NSApp.activate(ignoringOtherApps: true)
                     let response = alert.runModal()
-                    if response == .alertFirstButtonReturn {
-                        if let downloadURL, downloadURL.pathExtension.lowercased() == "zip" {
+                    let idx = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+                    guard idx >= 0 && idx < actions.count else { return }
+                    switch actions[idx] {
+                    case .trustFirst:
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            let r = self.trustUpdaterCertificate()
+                            DispatchQueue.main.async {
+                                if r.ok { self.infoModal(t("cert_trust_done_reopen")) }
+                                else { self.errorModal(t("cert_trust_failed"), info: r.message) }
+                            }
+                        }
+                    case .install:
+                        if let downloadURL {
                             installUpdate(fromZip: downloadURL) { errorMessage in
                                 if let errorMessage {
                                     DispatchQueue.main.async {
@@ -2179,13 +2204,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                                     }
                                 }
                             }
-                        } else if let downloadURL {
-                            NSWorkspace.shared.open(downloadURL)
-                        } else {
-                            NSWorkspace.shared.open(releaseURL)
                         }
-                    } else if downloadURL != nil && response == .alertSecondButtonReturn {
+                    case .browserDownload:
+                        if let downloadURL { NSWorkspace.shared.open(downloadURL) }
+                    case .openReleases:
                         NSWorkspace.shared.open(releaseURL)
+                    case .cancel:
+                        break
                     }
                 case .upToDate:
                     clearPendingUpdate()
@@ -2398,6 +2423,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         
         mainMenu.addItem(withTitle: t("set_password"), action: #selector(askPassword), keyEquivalent: "")
         mainMenu.addItem(withTitle: t("check_permissions"), action: #selector(checkPermissions), keyEquivalent: "")
+        mainMenu.addItem(withTitle: t("trust_updater_certificate"), action: #selector(trustUpdaterCertificateMenu), keyEquivalent: "")
 
         item = mainMenu.addItem(withTitle: t("passive_mode"), action: #selector(togglePassiveMode), keyEquivalent: "")
         item.state = prefs.bool(forKey: "passiveMode") ? .on : .off
@@ -2474,6 +2500,63 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         return nil
     }
 
+    /// True if the running app already chains to a trusted anchor — i.e. the
+    /// updater certificate is trusted and TCC will persist grants across updates.
+    func isUpdaterCertTrusted() -> Bool {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        proc.arguments = anchorTrustedArguments(bundlePath: Bundle.main.bundlePath)
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run(); proc.waitUntilExit() } catch { return false }
+        return isBundleTrusted(codesignExitCode: proc.terminationStatus)
+    }
+
+    /// Trusts the bundled public certificate for code signing in the user-domain
+    /// login keychain (triggers a Touch-ID/password prompt). Returns (true, nil)
+    /// on success, (false, message) otherwise. Blocks until the user responds —
+    /// call off the main queue.
+    func trustUpdaterCertificate() -> (ok: Bool, message: String?) {
+        guard let certURL = Bundle.main.url(forResource: "SigningCertificate", withExtension: "cer") else {
+            return (false, t("cert_trust_no_resource"))
+        }
+        let login = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Keychains/login.keychain-db")
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        proc.arguments = addTrustedCertArguments(certPath: certURL.path, loginKeychainPath: login)
+        let errPipe = Pipe()
+        proc.standardError = errPipe
+        do { try proc.run() } catch { return (false, error.localizedDescription) }
+        proc.waitUntilExit()
+        if proc.terminationStatus == 0 { return (true, nil) }
+        let data = errPipe.fileHandleForReading.readDataToEndOfFile()
+        let msg = String(data: data, encoding: .utf8).flatMap { $0.isEmpty ? nil : $0 }
+            ?? "security exited \(proc.terminationStatus)"
+        return (false, msg)
+    }
+
+    @objc func trustUpdaterCertificateMenu() {
+        if isUpdaterCertTrusted() {
+            infoModal(t("cert_already_trusted"))
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = t("cert_trust_title")
+        alert.informativeText = t("cert_trust_explain")
+        alert.window.title = "BLEUnlock"
+        alert.addButton(withTitle: t("cert_trust_confirm"))
+        alert.addButton(withTitle: t("cancel"))
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = self.trustUpdaterCertificate()
+            DispatchQueue.main.async {
+                if result.ok { self.infoModal(t("cert_trust_done")) }
+                else { self.errorModal(t("cert_trust_failed"), info: result.message) }
+            }
+        }
+    }
+
     /// Read-only diagnostic: reports the ACTUAL runtime permission state from the
     /// real APIs (Accessibility, Bluetooth, Automation, Notifications, event script),
     /// as opposed to what System Settings shows. Because this app is ad-hoc signed,
@@ -2543,6 +2626,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             items.append(PermissionItem(name: t("perm_event_script"), state: .info, detail: String(format: t("perm_event_script_found"), path)))
         } else {
             items.append(PermissionItem(name: t("perm_event_script"), state: .info, detail: t("perm_event_script_missing")))
+        }
+
+        if isUpdaterCertTrusted() {
+            items.append(PermissionItem(name: t("perm_updater_cert"), state: .ok, detail: ""))
+        } else {
+            items.append(PermissionItem(name: t("perm_updater_cert"), state: .info, detail: t("perm_updater_cert_untrusted")))
         }
 
         let alert = NSAlert()
