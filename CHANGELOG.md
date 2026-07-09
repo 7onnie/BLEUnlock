@@ -1,5 +1,9 @@
 # Release Notes
 
+## 1.15.8
+
+- Maintenance build (verifies that trusted-certificate installs keep their Keychain access across updates).
+
 ## 1.15.7
 
 - New **Trust Updater Certificate…** menu item: trust the fork's signing certificate for code signing (one Touch ID prompt, no sudo) so Bluetooth/Accessibility/Keychain permissions persist across updates instead of being re-requested each time. The Update Available dialog offers this before updating, and Check Permissions shows the trust status.
