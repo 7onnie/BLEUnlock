@@ -193,7 +193,7 @@ Pairing itself usually has little effect on battery life. The bigger battery imp
 On locking and unlocking, BLEUnlock runs a script located here:
 
 ```
-~/Library/Application Scripts/com.github.Skyearn.BLEUnlock/event
+~/Library/Application Scripts/com.github.7onnie.BLEUnlock/event
 ```
 
 An argument is passed depending on the type of event:

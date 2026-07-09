@@ -1,5 +1,11 @@
 # Release Notes
 
+## 1.15.2
+
+- Bundle identifier renamed to com.github.7onnie.BLEUnlock (settings and keychain entry migrate automatically; macOS will re-ask for Bluetooth/Accessibility once)
+- Event script: legacy script locations (Skyearn/ts1) are found automatically
+- German localization completed; missing translations now fall back to English instead of showing raw keys
+
 ## 1.15.1
 
 - Update-pipeline end-to-end test release
