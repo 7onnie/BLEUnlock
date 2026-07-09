@@ -78,11 +78,24 @@ Download the latest `BLEUnlock-vX.Y.Z.dmg` (or `.zip`) from the
 > 3. On first start, grant the requested **Bluetooth**, **Accessibility**, **Keychain**, and
 >    **Notification** permissions.
 >
-> **Updates carry your permissions over.** Because every release is signed with the same
-> certificate, the code signature is stable across versions — so your Accessibility/Bluetooth
-> grants and the saved-password Keychain access survive updates, and the in-app updater
-> triggers no new Gatekeeper prompt. Use **Check Permissions…** in the menu at any time to
-> confirm every required grant is in place.
+> Use **Check Permissions…** in the menu at any time to confirm every required grant is in place.
+
+### Keeping permissions across updates
+
+By default macOS re-asks for Bluetooth/Accessibility/Keychain access on **every** update:
+because the releases are signed with a self-signed certificate that your Mac doesn't trust,
+macOS ties each grant to the exact build (which changes every release) instead of to the
+app's stable identity.
+
+To make your permissions persist across updates, trust the signing certificate for code
+signing once — choose **Trust Updater Certificate…** from the menu (a single Touch ID /
+password prompt, no admin/sudo needed). After that, updates keep your Bluetooth,
+Accessibility, and saved-password grants and install without re-prompting. The
+**Update Available** dialog also offers **Trust Certificate First…** the next time an update
+is found, and **Check Permissions…** shows whether the certificate is currently trusted.
+
+To undo later: remove **BLEUnlock Fork Signing** in Keychain Access, or run
+`security delete-certificate -c "BLEUnlock Fork Signing"`.
 
 ## Setting up
 
