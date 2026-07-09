@@ -5,13 +5,14 @@
 > compatibility, multi-device support) and adds a smoothed-RSSI unlock gate and Wi-Fi
 > auto-pause. Credits to Takeshi Sone and Skyearn.
 >
-> **Installing:** releases are ad-hoc signed (no Apple Developer ID). On first install,
+> **Installing:** releases are signed with a self-signed certificate (no Apple Developer ID,
+> not notarized). On first install,
 > macOS will refuse to open the app. Either allow it under *System Settings → Privacy &
 > Security → Open Anyway*, or run:
 > `xattr -dr com.apple.quarantine /Applications/BLEUnlock.app`
-> Updates installed via the in-app updater trigger no new Gatekeeper prompt. macOS may
-> however re-ask for Accessibility/Bluetooth permissions after an update, because ad-hoc
-> signatures change with every build.
+> Updates installed via the in-app updater trigger no new Gatekeeper prompt, and because
+> every release is signed with the same stable certificate, your Accessibility/Bluetooth
+> grants and the saved-password Keychain access carry over across updates.
 
 ## Please note that I don't distribute this app on the Mac App Store. You can find it here for free! 
 
