@@ -329,6 +329,7 @@ class MonitoredDeviceState {
     var proximityTimer: Timer?
     var signalTimer: Timer?
     var rssiWindow: [Int] = []
+    var estimatedHistory: [Int] = []   // smoothed RSSI history for trajectory/slope
     var lastReadAt = 0.0
     var activeModeTimer: Timer?
     var connectionTimer: Timer?
@@ -522,6 +523,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             state.lastRSSI = nil
             state.lastReadAt = 0
             state.rssiWindow.removeAll()
+            state.estimatedHistory.removeAll()
             state.presence = false
             if let peripheral = state.peripheral, peripheral.state != .disconnected {
                 centralMgr.cancelPeripheralConnection(peripheral)
@@ -579,6 +581,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             let state = monitoredStates[uuid] ?? MonitoredDeviceState(uuid: uuid)
             state.presence = true
             state.rssiWindow.removeAll()
+            state.estimatedHistory.removeAll()
             state.proximityTimer?.invalidate()
             state.proximityTimer = nil
 
@@ -651,7 +654,11 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     func resetSignalTimer(for state: MonitoredDeviceState) {
         state.signalTimer?.invalidate()
-        state.signalTimer = Timer.scheduledTimer(withTimeInterval: signalTimeout, repeats: false, block: { [weak self, weak state] _ in
+        let slope = rssiSlope(state.estimatedHistory)
+        let interval = state.estimatedHistory.count >= SLOPE_WINDOW
+            ? signalLossDelay(slope: slope, lastEstimatedRSSI: state.lastRSSI ?? 0, cap: signalTimeout)
+            : signalTimeout
+        state.signalTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false, block: { [weak self, weak state] _ in
             guard let self = self, let state = state else { return }
             print("Device \(state.uuid) is lost")
             state.lastRSSI = nil
@@ -660,6 +667,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
             state.connectionTimer?.invalidate()
             state.connectionTimer = nil
             state.rssiWindow.removeAll()
+            state.estimatedHistory.removeAll()
             self.updateAggregateRSSI()
             if state.presence {
                 state.presence = false
@@ -687,6 +695,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 state.invalidateTimers()
                 state.lastRSSI = nil
                 state.rssiWindow.removeAll()
+                state.estimatedHistory.removeAll()
                 state.presence = false
             }
             presence = false
@@ -719,6 +728,11 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         // Smooth first, so every decision below uses the median-filtered value.
         let estimatedRSSI = getEstimatedRSSI(state: state, rssi: rssi)
         state.lastRSSI = estimatedRSSI
+        state.estimatedHistory.append(estimatedRSSI)
+        if state.estimatedHistory.count > SLOPE_WINDOW {
+            state.estimatedHistory.removeFirst()
+        }
+        let slope = rssiSlope(state.estimatedHistory)
         updateAggregateRSSI()
 
         let unlockThreshold = (unlockRSSI == UNLOCK_DISABLED ? lockRSSI : unlockRSSI)
@@ -741,7 +755,13 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                 state.proximityTimer = nil
             }
         } else if state.presence && state.proximityTimer == nil {
-            state.proximityTimer = Timer.scheduledTimer(withTimeInterval: proximityTimeout, repeats: false, block: { [weak self, weak state] _ in
+            let lockThresh = (lockRSSI == LOCK_DISABLED ? unlockRSSI : lockRSSI)
+            let base = proximityTimeout
+            let delay = state.estimatedHistory.count >= SLOPE_WINDOW
+                ? adaptiveLockDelay(estimatedRSSI: estimatedRSSI, lockThreshold: lockThresh, slope: slope, baseDelay: base)
+                : base
+            print("Proximity timer for \(state.uuid): slope \(String(format: "%.2f", slope)), delay \(String(format: "%.1f", delay))s (base \(base)s)")
+            state.proximityTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false, block: { [weak self, weak state] _ in
                 guard let self = self, let state = state else { return }
                 print("Device \(state.uuid) is away")
                 state.presence = false
@@ -761,6 +781,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     func clearSmoothingWindows() {
         for state in monitoredStates.values {
             state.rssiWindow.removeAll()
+            state.estimatedHistory.removeAll()
             state.lastRSSI = nil
         }
     }
