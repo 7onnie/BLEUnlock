@@ -1,29 +1,25 @@
-# BLEUnlock
+<h1 align="center">BLEUnlock</h1>
 
-> **Maintained fork.** Upstream [ts1/BLEUnlock](https://github.com/ts1/BLEUnlock) is inactive.
-> This fork is based on [Skyearn/BLEUnlock](https://github.com/Skyearn/BLEUnlock) (macOS 26
-> compatibility, multi-device support) and adds a smoothed-RSSI unlock gate and Wi-Fi
-> auto-pause. Credits to Takeshi Sone and Skyearn.
->
-> **Installing:** releases are signed with a self-signed certificate (no Apple Developer ID,
-> not notarized). On first install,
-> macOS will refuse to open the app. Either allow it under *System Settings → Privacy &
-> Security → Open Anyway*, or run:
-> `xattr -dr com.apple.quarantine /Applications/BLEUnlock.app`
-> Updates installed via the in-app updater trigger no new Gatekeeper prompt, and because
-> every release is signed with the same stable certificate, your Accessibility/Bluetooth
-> grants and the saved-password Keychain access carry over across updates.
+<p align="center">
+  Lock and unlock your Mac by the proximity of your iPhone, Apple Watch, or any Bluetooth Low Energy device — no companion app, no password typing.
+</p>
 
-## Please note that I don't distribute this app on the Mac App Store. You can find it here for free! 
+<p align="center">
+  <a href="https://github.com/7onnie/BLEUnlock/actions/workflows/test.yml"><img alt="CI" src="https://github.com/7onnie/BLEUnlock/actions/workflows/test.yml/badge.svg"></a>
+  <a href="https://github.com/7onnie/BLEUnlock/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/7onnie/BLEUnlock?sort=semver"></a>
+  <a href="https://github.com/7onnie/BLEUnlock/releases"><img alt="Total downloads" src="https://img.shields.io/github/downloads/7onnie/BLEUnlock/total.svg"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/7onnie/BLEUnlock"></a>
+  <img alt="Platform: macOS 10.13+" src="https://img.shields.io/badge/macOS-10.13%2B-blue">
+</p>
 
-![CI](https://github.com/Skyearn/BLEUnlock/workflows/CI/badge.svg)
-![Github All Releases](https://img.shields.io/github/downloads/Skyearn/BLEUnlock/total.svg)
-
-BLEUnlock is a small menu bar utility that locks and unlocks your Mac by proximity of your iPhone, Apple Watch, or any other Bluetooth Low Energy device.
+> [!NOTE]
+> **Maintained fork.** Upstream [ts1/BLEUnlock](https://github.com/ts1/BLEUnlock) is inactive, so
+> this repository is where the app is kept alive. It builds on the active
+> [Skyearn/BLEUnlock](https://github.com/Skyearn/BLEUnlock) fork (macOS 26 compatibility,
+> multi-device monitoring) and adds a smoothed-RSSI unlock gate, Wi-Fi auto-pause, and an
+> in-app updater. Credits to Takeshi Sone (original author) and Skyearn.
 
 This document is also available in [Japanese (日本語版はこちら)](README.ja.md) and [Simplified Chinese (简体中文)](README.cn.md).
-
-> This repository is a fork of the original [ts1/BLEUnlock](https://github.com/ts1/BLEUnlock), created by Takeshi Sone. Many thanks to Takeshi Sone for open-sourcing BLEUnlock under the MIT license, and to all contributors who made the original project possible.
 
 ## Features
 
@@ -62,28 +58,27 @@ For users who need both security and convenience, consider using Apple's built-i
 
 ## Installation
 
-### Using Homebrew Cask
+Download the latest `BLEUnlock-vX.Y.Z.dmg` (or `.zip`) from the
+[**Releases**](https://github.com/7onnie/BLEUnlock/releases/latest) page, open it, and move
+`BLEUnlock.app` to your **Applications** folder.
 
-```sh
-brew install --cask Skyearn/tap/bleunlock
-```
-
-> This uses this fork's own Homebrew tap. The official `bleunlock` cask in Homebrew may still point to the upstream project.
-
-### Manual installation
-
-Download the dmg file from [Releases](https://github.com/Skyearn/BLEUnlock/releases), open it, and move BLEUnlock to the Applications folder.
-
-> NOTE: This fork is not enrolled in the Apple Developer Program, so release builds cannot be distributed with Apple Developer ID signing and notarization. macOS may therefore block the app on first launch.
+> [!IMPORTANT]
+> This fork is **not** enrolled in the Apple Developer Program. Releases are signed with a
+> stable self-signed certificate — not notarized — so macOS Gatekeeper blocks the app on the
+> **first** launch. Clear it once:
 >
-> When double-clicking for the first time, macOS shows "cannot be opened because Apple cannot check it for malicious software" with only "Done" and "Move to Trash":
 > 1. Move `BLEUnlock.app` to `/Applications`.
-> 2. Open Terminal and run: `sudo xattr -rd com.apple.quarantine /Applications/BLEUnlock.app` to clear the quarantine flag.
-> 3. If it is still blocked, open **System Settings** -> **Privacy & Security**, scroll down, and click **Open Anyway** for BLEUnlock.
-> 4. Launch the app again and confirm **Open**.
-> 5. After the app starts, grant the requested Bluetooth, Accessibility, Keychain, and Notification permissions.
+> 2. In Terminal, run `xattr -dr com.apple.quarantine /Applications/BLEUnlock.app`
+>    (or right-click the app → **Open** → **Open**, then in *System Settings → Privacy &
+>    Security* click **Open Anyway**).
+> 3. On first start, grant the requested **Bluetooth**, **Accessibility**, **Keychain**, and
+>    **Notification** permissions.
 >
-> To reduce repeated permission prompts when updating, replace the existing `/Applications/BLEUnlock.app` instead of running copies from different folders.
+> **Updates carry your permissions over.** Because every release is signed with the same
+> certificate, the code signature is stable across versions — so your Accessibility/Bluetooth
+> grants and the saved-password Keychain access survive updates, and the in-app updater
+> triggers no new Gatekeeper prompt. Use **Check Permissions…** in the menu at any time to
+> confirm every required grant is in place.
 
 ## Setting up
 
@@ -287,4 +282,4 @@ They are originally designed by Google LLC and licensed under Apache License ver
 
 MIT
 
-Copyright © 2019-2022 Takeshi Sone. MIT Licensed.<br>Copyright © 2026 Skyearn. MIT Licensed.
+Copyright © 2019-2022 Takeshi Sone. MIT Licensed.<br>Copyright © 2026 Skyearn. MIT Licensed.<br>Copyright © 2026 7onnie. MIT Licensed.
