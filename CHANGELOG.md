@@ -2,7 +2,7 @@
 
 ## 1.15.8
 
-- Maintenance build (verifies that trusted-certificate installs keep their Keychain access across updates).
+- Maintenance build. (Note: trusting the updater certificate makes Accessibility/Bluetooth permissions persist across updates, but the saved-password Keychain item still prompts once per update on self-signed builds — a limitation without an Apple Developer ID.)
 
 ## 1.15.7
 
