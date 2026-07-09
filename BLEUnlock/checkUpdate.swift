@@ -14,6 +14,17 @@ enum UpdateCheckResult {
     case available(version: String, downloadURL: URL?, releaseURL: URL)
     case upToDate
     case failure(String)
+    case intelUnsupported
+}
+
+/// Physical hardware check, not the process architecture: an x86_64 build
+/// running under Rosetta still reports hw.optional.arm64 == 1, and on Intel
+/// Macs the key does not exist at all (sysctl fails).
+func isAppleSiliconHardware() -> Bool {
+    var value: Int32 = 0
+    var size = MemoryLayout<Int32>.size
+    guard sysctlbyname("hw.optional.arm64", &value, &size, nil, 0) == 0 else { return false }
+    return value == 1
 }
 
 struct PendingUpdate {
@@ -34,6 +45,12 @@ private struct ReleaseInfo {
 }
 
 func checkUpdate(force: Bool = false, completion: ((UpdateCheckResult) -> Void)? = nil) {
+    // Releases after the arm64-only switch will not run on Intel Macs, so
+    // never offer them an update (see BUILD-POLICY.md in 7onnie/.github).
+    guard isAppleSiliconHardware() else {
+        completion?(.intelUnsupported)
+        return
+    }
     if !force {
         guard automaticUpdateChecksEnabled() else { return }
         guard !notified else { return }

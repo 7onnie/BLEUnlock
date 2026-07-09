@@ -1,5 +1,9 @@
 # Release Notes
 
+## 1.15.5
+
+- Update checks now detect Intel Macs and no longer offer updates there. Upcoming BLEUnlock releases will be built for Apple Silicon only; this is the last version that runs on Intel hardware
+
 ## 1.15.4
 
 - Releases are now signed with a stable self-signed certificate instead of ad-hoc. The code signature no longer changes on every build, so Accessibility/Bluetooth permissions and the saved-password Keychain access survive updates (no more re-approving after each update)

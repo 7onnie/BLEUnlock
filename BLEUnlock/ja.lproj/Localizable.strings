@@ -43,6 +43,7 @@
 "update_available_title" = "アップデートがあります";
 "update_check_failed" = "アップデートの確認に失敗しました";
 "update_up_to_date" = "BLEUnlock は最新です。";
+"update_intel_unsupported" = "BLEUnlock の新しいバージョンには Apple Silicon 搭載の Mac が必要です。これは Intel Mac に対応する最後のバージョンです。";
 "updates" = "アップデート";
 "updates_available" = "アップデート（新バージョンあり）";
 "unlock_settings" = "アンロック設定";
