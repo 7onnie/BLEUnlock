@@ -77,6 +77,7 @@
 "update_check_failed" = "Update-Prüfung fehlgeschlagen";
 "update_install_failed" = "Update-Installation fehlgeschlagen";
 "update_up_to_date" = "BLEUnlock ist auf dem aktuellen Stand.";
+"update_intel_unsupported" = "Neuere Versionen von BLEUnlock benötigen einen Mac mit Apple Silicon. Dies ist die letzte Version für Intel-Macs.";
 "updates" = "Updates";
 "updates_available" = "Updates (verfügbar)";
 "unlock_device_logic" = "Entsperr-Logik";

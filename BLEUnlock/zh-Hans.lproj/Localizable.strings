@@ -57,6 +57,7 @@
 "update_available_title" = "发现更新";
 "update_check_failed" = "检查更新失败";
 "update_up_to_date" = "BLEUnlock 已是最新版本。";
+"update_intel_unsupported" = "新版本的 BLEUnlock 需要搭载 Apple Silicon 的 Mac。这是支持 Intel Mac 的最后一个版本。";
 "updates" = "更新";
 "updates_available" = "更新（有新版本）";
 "unlock_rssi" = "解锁 RSSI";

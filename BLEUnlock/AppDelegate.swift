@@ -2193,6 +2193,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                     self.infoModal(t("update_up_to_date"))
                 case .failure(let message):
                     self.errorModal(t("update_check_failed"), info: message)
+                case .intelUnsupported:
+                    clearPendingUpdate()
+                    self.refreshUpdateMenuItems()
+                    self.infoModal(t("update_intel_unsupported"))
                 }
             }
         }
@@ -2215,6 +2219,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                     clearPendingUpdate()
                 case .failure:
                     break
+                case .intelUnsupported:
+                    clearPendingUpdate()
                 }
                 self.refreshUpdateMenuItems()
             }

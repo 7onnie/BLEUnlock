@@ -81,6 +81,7 @@
 "update_check_failed" = "Failed to Check for Updates";
 "update_install_failed" = "Failed to Install Update";
 "update_up_to_date" = "BLEUnlock is up to date.";
+"update_intel_unsupported" = "Newer versions of BLEUnlock require a Mac with Apple Silicon. This is the last version that supports Intel Macs.";
 "updates" = "Updates";
 "updates_available" = "Updates (Available)";
 "unlock_rssi" = "Unlock RSSI";
