@@ -153,6 +153,8 @@ func notifyUpdateAvailable() {
     }
 }
 
+private enum UpdateDialogAction { case trustFirst, install, browserDownload, openReleases, cancel }
+
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemValidation, NSUserNotificationCenterDelegate, UNUserNotificationCenterDelegate, BLEDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -2158,20 +2160,43 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                 case .available(let version, let downloadURL, let releaseURL):
                     savePendingUpdate(version: version, downloadURL: downloadURL, releaseURL: releaseURL)
                     self.refreshUpdateMenuItems()
+                    let trusted = self.isUpdaterCertTrusted()
                     let alert = NSAlert()
                     alert.messageText = t("update_available_title")
-                    alert.informativeText = String(format: t("update_available_message"), version)
+                    var body = String(format: t("update_available_message"), version)
+                    if !trusted { body += "\n\n" + t("update_untrusted_hint") }
+                    alert.informativeText = body
                     alert.window.title = "BLEUnlock"
-                    if downloadURL != nil {
-                        let isZip = downloadURL?.pathExtension.lowercased() == "zip"
-                        alert.addButton(withTitle: t(isZip ? "install_update" : "download_update"))
+
+                    // Build buttons and a parallel action list so response handling
+                    // never depends on hard-coded first/second/third indices.
+                    var actions: [UpdateDialogAction] = []
+                    if !trusted {
+                        alert.addButton(withTitle: t("trust_certificate_first")); actions.append(.trustFirst)
                     }
-                    alert.addButton(withTitle: t("open_releases"))
-                    alert.addButton(withTitle: t("cancel"))
+                    if let downloadURL {
+                        let isZip = downloadURL.pathExtension.lowercased() == "zip"
+                        alert.addButton(withTitle: t(isZip ? "install_update" : "download_update"))
+                        actions.append(isZip ? .install : .browserDownload)
+                    }
+                    alert.addButton(withTitle: t("open_releases")); actions.append(.openReleases)
+                    alert.addButton(withTitle: t("cancel")); actions.append(.cancel)
+
                     NSApp.activate(ignoringOtherApps: true)
                     let response = alert.runModal()
-                    if response == .alertFirstButtonReturn {
-                        if let downloadURL, downloadURL.pathExtension.lowercased() == "zip" {
+                    let idx = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+                    guard idx >= 0 && idx < actions.count else { return }
+                    switch actions[idx] {
+                    case .trustFirst:
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            let r = self.trustUpdaterCertificate()
+                            DispatchQueue.main.async {
+                                if r.ok { self.infoModal(t("cert_trust_done_reopen")) }
+                                else { self.errorModal(t("cert_trust_failed"), info: r.message) }
+                            }
+                        }
+                    case .install:
+                        if let downloadURL {
                             installUpdate(fromZip: downloadURL) { errorMessage in
                                 if let errorMessage {
                                     DispatchQueue.main.async {
@@ -2179,13 +2204,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                                     }
                                 }
                             }
-                        } else if let downloadURL {
-                            NSWorkspace.shared.open(downloadURL)
-                        } else {
-                            NSWorkspace.shared.open(releaseURL)
                         }
-                    } else if downloadURL != nil && response == .alertSecondButtonReturn {
+                    case .browserDownload:
+                        if let downloadURL { NSWorkspace.shared.open(downloadURL) }
+                    case .openReleases:
                         NSWorkspace.shared.open(releaseURL)
+                    case .cancel:
+                        break
                     }
                 case .upToDate:
                     clearPendingUpdate()
@@ -2601,6 +2626,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             items.append(PermissionItem(name: t("perm_event_script"), state: .info, detail: String(format: t("perm_event_script_found"), path)))
         } else {
             items.append(PermissionItem(name: t("perm_event_script"), state: .info, detail: t("perm_event_script_missing")))
+        }
+
+        if isUpdaterCertTrusted() {
+            items.append(PermissionItem(name: t("perm_updater_cert"), state: .ok, detail: ""))
+        } else {
+            items.append(PermissionItem(name: t("perm_updater_cert"), state: .info, detail: t("perm_updater_cert_untrusted")))
         }
 
         let alert = NSAlert()
