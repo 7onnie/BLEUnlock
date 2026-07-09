@@ -4,13 +4,16 @@
   Lock and unlock your Mac by the proximity of your iPhone, Apple Watch, or any Bluetooth Low Energy device — no companion app, no password typing.
 </p>
 
+<!-- BADGES:START -->
 <p align="center">
   <a href="https://github.com/7onnie/BLEUnlock/actions/workflows/test.yml"><img alt="CI" src="https://github.com/7onnie/BLEUnlock/actions/workflows/test.yml/badge.svg"></a>
   <a href="https://github.com/7onnie/BLEUnlock/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/7onnie/BLEUnlock?sort=semver"></a>
   <a href="https://github.com/7onnie/BLEUnlock/releases"><img alt="Total downloads" src="https://img.shields.io/github/downloads/7onnie/BLEUnlock/total.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/7onnie/BLEUnlock"></a>
   <img alt="Platform: macOS 10.13+" src="https://img.shields.io/badge/macOS-10.13%2B-blue">
+  <a href="https://buymeacoffee.com/7onnie"><img alt="Buy me a coffee" src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black"></a>
 </p>
+<!-- BADGES:END -->
 
 > [!NOTE]
 > **Maintained fork.** Upstream [ts1/BLEUnlock](https://github.com/ts1/BLEUnlock) is inactive, so
