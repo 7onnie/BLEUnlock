@@ -1,7 +1,10 @@
 # BLEUnlock
 
+<!-- BADGES:START -->
 ![CI](https://github.com/7onnie/BLEUnlock/actions/workflows/test.yml/badge.svg)
 ![Github All Releases](https://img.shields.io/github/downloads/7onnie/BLEUnlock/total.svg)
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/7onnie)
+<!-- BADGES:END -->
 
 BLEUnlockはiPhone, Apple Watchやその他のBluetooth Low Energyデバイスの距離によってMacをロック・アンロックする小さなメニューバーユーティリティーです。
 
