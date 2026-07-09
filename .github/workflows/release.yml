@@ -163,3 +163,11 @@ jobs:
               --title "${RELEASE_TAG}" \
               --notes-file <(awk "/^## ${RELEASE_TAG#v}/{found=1; next} /^## /{found=0; exit} found" CHANGELOG.md)
           fi
+          # Stabil benanntes Zusatz-Asset für den Homebrew-Cask:
+          # https://github.com/7onnie/BLEUnlock/releases/latest/download/BLEUnlock.zip
+          # WICHTIG: NACH den versionierten Assets hochladen — der In-App-Updater nimmt
+          # das ERSTE .zip-Asset (preferredUpdateAssetName in UpdateAssets.swift); beide
+          # Zips sind byte-identisch, die Reihenfolge ist nur Belt-and-Braces.
+          cp "build/Build/Products/Release/BLEUnlock-${RELEASE_TAG}.zip" \
+             "build/Build/Products/Release/BLEUnlock.zip"
+          gh release upload "${RELEASE_TAG}" "build/Build/Products/Release/BLEUnlock.zip" --clobber
