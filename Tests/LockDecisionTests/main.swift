@@ -31,10 +31,17 @@ check(d >= 2.0 && d <= 5.0, "result clamped to [MIN, base]")
 // invariant: baseDelay below MIN -> never longer than base
 check(adaptiveLockDelay(estimatedRSSI: -96, lockThreshold: -80, slope: -5, baseDelay: 1.0) == 1.0,
       "baseDelay < MIN -> returns baseDelay (never slower than configured)")
+// invariant: baseDelay exactly MIN -> returns baseDelay
+check(adaptiveLockDelay(estimatedRSSI: -96, lockThreshold: -80, slope: -5, baseDelay: 2.0) == 2.0,
+      "baseDelay == MIN -> returns baseDelay")
 
 // signalLossDelay — cap 60s
 check(signalLossDelay(slope: -2.0, lastEstimatedRSSI: -60, cap: 60) == 3.0,
       "falling trend -> TREND_LOSS_DELAY")
+check(signalLossDelay(slope: -1.5, lastEstimatedRSSI: -60, cap: 60) == 3.0,
+      "slope exactly FALLING_SLOPE -> trend delay")
+check(signalLossDelay(slope: 0, lastEstimatedRSSI: -70, cap: 60) == 15.0,
+      "lastRSSI exactly STRONG_RSSI -> strong grace")
 check(signalLossDelay(slope: 0, lastEstimatedRSSI: -60, cap: 60) == 15.0,
       "no trend + strong signal -> DROPOUT_GRACE_STRONG")
 check(signalLossDelay(slope: 0, lastEstimatedRSSI: -75, cap: 60) == 5.0,
