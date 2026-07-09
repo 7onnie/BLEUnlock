@@ -65,6 +65,8 @@
 "perm_notifications_disabled" = "Disabled (optional).";
 "perm_notifications_unknown" = "Status unknown.";
 "perm_event_script" = "Event script";
+"perm_event_script_found" = "Found at %@";
+"perm_event_script_missing" = "Not installed (optional).";
 "perm_open_settings" = "Open System Settings…";
 "permissions_check_title" = "Permission Check";
 "quit" = "Quit BLEUnlock";

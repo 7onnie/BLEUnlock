@@ -1,5 +1,10 @@
 # Release Notes
 
+## 1.15.3
+
+- New "Check Permissions…" menu item: reports the real Accessibility/Bluetooth/Automation/notification/event-script state (the System Settings list can be stale for ad-hoc-signed builds) with guidance and a Settings deeplink
+- German localization for the permission check
+
 ## 1.15.2
 
 - Bundle identifier renamed to com.github.7onnie.BLEUnlock (settings migrate automatically; macOS will ask once to allow access to the saved password and will re-ask for Bluetooth/Accessibility)

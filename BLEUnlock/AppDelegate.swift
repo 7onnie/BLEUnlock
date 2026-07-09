@@ -2500,9 +2500,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
 
         // Automation: only relevant when the pause-media feature is enabled, and only
         // for the media apps that are actually running right now.
+        var automationDenied = false
         if prefs.bool(forKey: "pauseItunes") {
             for app in ManagedMediaApp.allCases where isRunning(app) {
                 let granted = hasAutomationPermission(for: app)
+                automationDenied = automationDenied || !granted
                 let name = String(format: t("perm_automation"), app.displayName)
                 items.append(PermissionItem(name: name, state: granted ? .ok : .fail, detail: granted ? "" : t("perm_automation_denied")))
             }
@@ -2532,9 +2534,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
 
         // Event script: informational only.
         if let path = resolveEventScriptPath() {
-            items.append(PermissionItem(name: t("perm_event_script"), state: .info, detail: "found at \(path)"))
+            items.append(PermissionItem(name: t("perm_event_script"), state: .info, detail: String(format: t("perm_event_script_found"), path)))
         } else {
-            items.append(PermissionItem(name: t("perm_event_script"), state: .info, detail: "not installed (optional)"))
+            items.append(PermissionItem(name: t("perm_event_script"), state: .info, detail: t("perm_event_script_missing")))
         }
 
         let alert = NSAlert()
@@ -2545,15 +2547,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             // cdhash guidance shown prominently when Accessibility is not trusted
             alert.informativeText += "\n\n" + t("perm_accessibility_cdhash_note")
         }
+        // Pick the Privacy pane that actually governs the topmost fixable failure.
+        // A powered-off radio is fixed in Control Center, not in any Privacy pane,
+        // so it alone must not offer the Settings button.
+        var settingsPane: String?
+        if !ax {
+            settingsPane = "Privacy_Accessibility"
+        } else if btPermItem.state == .fail {
+            settingsPane = "Privacy_Bluetooth"
+        } else if automationDenied {
+            settingsPane = "Privacy_Automation"
+        }
         alert.addButton(withTitle: t("ok"))
-        if hasPermissionFailure(items) {
+        if settingsPane != nil {
             alert.addButton(withTitle: t("perm_open_settings"))
         }
         NSApp.activate(ignoringOtherApps: true)
         let response = alert.runModal()
-        if hasPermissionFailure(items) && response == .alertSecondButtonReturn {
-            // Best-effort deeplink: Accessibility pane if that's the failure, else general Privacy.
-            let pane = !ax ? "Privacy_Accessibility" : "Privacy_Bluetooth"
+        if let pane = settingsPane, response == .alertSecondButtonReturn {
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
                 NSWorkspace.shared.open(url)
             }
