@@ -2549,6 +2549,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             if #available(macOS 13.0, *) {
                 var status = SMAppService.mainApp.status
                 var registered = (status == .enabled || status == .requiresApproval)
+                var migrationRegisterFailed = false
                 if self.didMigrateLegacyDataThisLaunch && !registered && self.prefs.bool(forKey: "launchAtLogin") {
                     // First launch under a new bundle identifier: the BTM record is
                     // keyed by bundle ID, so carry the migrated launch-at-login
@@ -2557,8 +2558,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
                     try? SMAppService.mainApp.register()
                     status = SMAppService.mainApp.status
                     registered = (status == .enabled || status == .requiresApproval)
+                    migrationRegisterFailed = !registered
                 }
-                if registered != self.prefs.bool(forKey: "launchAtLogin") {
+                if registered != self.prefs.bool(forKey: "launchAtLogin") && !migrationRegisterFailed {
+                    // If the one-shot migration register just failed, keep the pref —
+                    // the launch path below retries visibly instead of silently
+                    // dropping the migrated setting (the migration key is already
+                    // consumed, so no later launch would recover it).
                     self.prefs.set(registered, forKey: "launchAtLogin")
                 }
             }
