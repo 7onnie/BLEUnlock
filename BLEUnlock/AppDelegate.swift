@@ -2391,6 +2391,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         }
         
         mainMenu.addItem(withTitle: t("set_password"), action: #selector(askPassword), keyEquivalent: "")
+        mainMenu.addItem(withTitle: t("check_permissions"), action: #selector(checkPermissions), keyEquivalent: "")
 
         item = mainMenu.addItem(withTitle: t("passive_mode"), action: #selector(togglePassiveMode), keyEquivalent: "")
         item.state = prefs.bool(forKey: "passiveMode") ? .on : .off
@@ -2446,6 +2447,117 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             CGEvent(keyboardEventSource: src, virtualKey: 63, keyDown: false)?.post(tap: .cghidEventTap)
         }
         return trusted
+    }
+
+    /// Resolves the path to the "event" script the same way runScript(_:) does
+    /// (current bundle's Application Scripts dir, falling back to legacy bundle
+    /// identifiers), but read-only: it never creates the directory as a side effect.
+    func resolveEventScriptPath() -> String? {
+        guard let directory = try? FileManager.default.url(for: .applicationScriptsDirectory, in: .userDomainMask, appropriateFor: nil, create: false) else { return nil }
+        let file = directory.appendingPathComponent("event")
+        if FileManager.default.isExecutableFile(atPath: file.path) {
+            return file.path
+        }
+        let scriptsRoot = directory.deletingLastPathComponent()
+        for legacyBundleIdentifier in legacyMainBundleIdentifiers {
+            let legacyFile = scriptsRoot.appendingPathComponent(legacyBundleIdentifier).appendingPathComponent("event")
+            if FileManager.default.isExecutableFile(atPath: legacyFile.path) {
+                return legacyFile.path
+            }
+        }
+        return nil
+    }
+
+    /// Read-only diagnostic: reports the ACTUAL runtime permission state from the
+    /// real APIs (Accessibility, Bluetooth, Automation, Notifications, event script),
+    /// as opposed to what System Settings shows. Because this app is ad-hoc signed,
+    /// its cdhash changes on every build, so a stale System Settings entry can look
+    /// wrong even though the running process already holds the grant.
+    @objc func checkPermissions() {
+        let ax = checkAccessibility(showPrompt: false)
+        let axItem = PermissionItem(name: t("perm_accessibility"), state: ax ? .ok : .fail, detail: ax ? "" : t("perm_accessibility_denied"))
+
+        // Read Bluetooth authorization from the existing CBCentralManager instance
+        // owned by `ble` (created unconditionally in BLE.init()), never from a
+        // freshly-created CBCentralManager -- creating a new one can itself trigger
+        // a permission prompt, which would defeat the purpose of a read-only check.
+        var btPermItem: PermissionItem
+        if #available(macOS 10.15, *) {
+            switch ble.centralMgr.authorization {
+            case .allowedAlways: btPermItem = PermissionItem(name: t("perm_bluetooth"), state: .ok, detail: "")
+            case .denied, .restricted: btPermItem = PermissionItem(name: t("perm_bluetooth"), state: .fail, detail: t("perm_bluetooth_denied"))
+            case .notDetermined: btPermItem = PermissionItem(name: t("perm_bluetooth"), state: .fail, detail: t("perm_bluetooth_notdetermined"))
+            @unknown default: btPermItem = PermissionItem(name: t("perm_bluetooth"), state: .fail, detail: "")
+            }
+        } else {
+            btPermItem = PermissionItem(name: t("perm_bluetooth"), state: .ok, detail: "")
+        }
+
+        let radioOn = ble.centralMgr.state == .poweredOn
+        let btRadioItem = PermissionItem(name: t("perm_bluetooth_radio"), state: radioOn ? .ok : .fail, detail: radioOn ? "" : t("perm_bluetooth_radio_off"))
+
+        var items: [PermissionItem] = [axItem, btPermItem, btRadioItem]
+
+        // Automation: only relevant when the pause-media feature is enabled, and only
+        // for the media apps that are actually running right now.
+        if prefs.bool(forKey: "pauseItunes") {
+            for app in ManagedMediaApp.allCases where isRunning(app) {
+                let granted = hasAutomationPermission(for: app)
+                let name = String(format: t("perm_automation"), app.displayName)
+                items.append(PermissionItem(name: name, state: granted ? .ok : .fail, detail: granted ? "" : t("perm_automation_denied")))
+            }
+        }
+
+        // Notifications: informational only, never a hard failure. getNotificationSettings
+        // is async; block the calling thread briefly with a semaphore so the overall
+        // report stays synchronous, but bound the wait so we can never hang forever.
+        // UNUserNotificationCenter requires macOS 10.14+ (deployment target is 10.13),
+        // so older systems just report "unknown" without touching the UN* APIs.
+        if #available(macOS 10.14, *) {
+            let semaphore = DispatchSemaphore(value: 0)
+            var notifStatus: UNAuthorizationStatus?
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                notifStatus = settings.authorizationStatus
+                semaphore.signal()
+            }
+            if semaphore.wait(timeout: .now() + 0.5) == .success, let status = notifStatus {
+                let detail = (status == .authorized) ? t("perm_notifications_enabled") : t("perm_notifications_disabled")
+                items.append(PermissionItem(name: t("perm_notifications"), state: .info, detail: detail))
+            } else {
+                items.append(PermissionItem(name: t("perm_notifications"), state: .info, detail: t("perm_notifications_unknown")))
+            }
+        } else {
+            items.append(PermissionItem(name: t("perm_notifications"), state: .info, detail: t("perm_notifications_unknown")))
+        }
+
+        // Event script: informational only.
+        if let path = resolveEventScriptPath() {
+            items.append(PermissionItem(name: t("perm_event_script"), state: .info, detail: "found at \(path)"))
+        } else {
+            items.append(PermissionItem(name: t("perm_event_script"), state: .info, detail: "not installed (optional)"))
+        }
+
+        let alert = NSAlert()
+        alert.messageText = t("permissions_check_title")
+        alert.informativeText = permissionReportText(items)
+        alert.window.title = "BLEUnlock"
+        if !ax {
+            // cdhash guidance shown prominently when Accessibility is not trusted
+            alert.informativeText += "\n\n" + t("perm_accessibility_cdhash_note")
+        }
+        alert.addButton(withTitle: t("ok"))
+        if hasPermissionFailure(items) {
+            alert.addButton(withTitle: t("perm_open_settings"))
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        if hasPermissionFailure(items) && response == .alertSecondButtonReturn {
+            // Best-effort deeplink: Accessibility pane if that's the failure, else general Privacy.
+            let pane = !ax ? "Privacy_Accessibility" : "Privacy_Bluetooth"
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 
     func requiresAccessibilityPermission() -> Bool {
