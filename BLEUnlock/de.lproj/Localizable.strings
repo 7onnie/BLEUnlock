@@ -64,6 +64,8 @@
 "perm_event_script_found" = "Gefunden unter %@";
 "perm_event_script_missing" = "Nicht installiert (optional).";
 "perm_open_settings" = "Systemeinstellungen öffnen…";
+"perm_updater_cert" = "Updater-Zertifikat";
+"perm_updater_cert_untrusted" = "Nicht vertraut — Rechte werden bei jedem Update neu abgefragt. Nutze „Updater-Zertifikat vertrauen…\".";
 "permissions_check_title" = "Berechtigungs-Prüfung";
 "quit" = "BLEUnlock beenden";
 "scanning" = "Scanning";
@@ -78,6 +80,7 @@
 "update_install_failed" = "Update-Installation fehlgeschlagen";
 "update_up_to_date" = "BLEUnlock ist auf dem aktuellen Stand.";
 "update_intel_unsupported" = "Neuere Versionen von BLEUnlock benötigen einen Mac mit Apple Silicon. Dies ist die letzte Version für Intel-Macs.";
+"update_untrusted_hint" = "Das Zertifikat dieses Builds ist noch nicht vertrauenswürdig, dieses Update fragt daher Rechte neu ab. Wähle „Zertifikat zuerst vertrauen\", um sie über dieses und künftige Updates zu behalten.";
 "updates" = "Updates";
 "updates_available" = "Updates (verfügbar)";
 "unlock_device_logic" = "Entsperr-Logik";
@@ -89,3 +92,13 @@
 "wake_on_proximity" = "Aufwachen bei Annäherung";
 "wake_without_unlocking" = "Aufwachen ohne Entsperren";
 "pair_for_mac_hint" = "Pair to stabilize random address tracking →";
+"trust_updater_certificate" = "Updater-Zertifikat vertrauen…";
+"trust_certificate_first" = "Zertifikat zuerst vertrauen…";
+"cert_trust_title" = "Dem Updater-Zertifikat vertrauen?";
+"cert_trust_explain" = "BLEUnlocks Releases sind mit einem eigenen Zertifikat signiert. Wenn du ihm fürs Code-Signing vertraust (eine Touch-ID-/Passwort-Abfrage), behält macOS deine Bluetooth-, Bedienungshilfen- und Passwort-Freigaben über Updates hinweg, statt jedes Mal neu zu fragen.\n\nSicherheit: Danach gilt jede mit diesem Zertifikat signierte App auf diesem Mac als vertrauenswürdig fürs Code-Signing. Nur der Maintainer besitzt den privaten Schlüssel. Rückgängig: „BLEUnlock Fork Signing\" in der Schlüsselbundverwaltung entfernen oder ausführen: security delete-certificate -c \"BLEUnlock Fork Signing\"";
+"cert_trust_confirm" = "Vertrauen";
+"cert_trust_done" = "Zertifikat vertraut. Künftige Updates behalten deine Freigaben.";
+"cert_trust_done_reopen" = "Zertifikat vertraut. Wähle erneut „Nach Updates suchen…\", um zu installieren — deine Freigaben bleiben erhalten.";
+"cert_trust_failed" = "Zertifikat konnte nicht vertraut werden.";
+"cert_trust_no_resource" = "Das mitgelieferte Zertifikat wurde nicht gefunden.";
+"cert_already_trusted" = "Das Updater-Zertifikat ist bereits vertrauenswürdig. Updates behalten deine Freigaben.";

@@ -68,6 +68,8 @@
 "perm_event_script_found" = "Found at %@";
 "perm_event_script_missing" = "Not installed (optional).";
 "perm_open_settings" = "Open System Settings…";
+"perm_updater_cert" = "Updater certificate";
+"perm_updater_cert_untrusted" = "Not trusted — permissions re-prompt on each update. Use \"Trust Updater Certificate…\".";
 "permissions_check_title" = "Permission Check";
 "quit" = "Quit BLEUnlock";
 "scanning" = "Scanning…";
@@ -82,6 +84,7 @@
 "update_install_failed" = "Failed to Install Update";
 "update_up_to_date" = "BLEUnlock is up to date.";
 "update_intel_unsupported" = "Newer versions of BLEUnlock require a Mac with Apple Silicon. This is the last version that supports Intel Macs.";
+"update_untrusted_hint" = "This build's certificate isn't trusted yet, so this update will re-ask for permissions. Choose \"Trust Certificate First\" to keep them across this and future updates.";
 "updates" = "Updates";
 "updates_available" = "Updates (Available)";
 "unlock_rssi" = "Unlock RSSI";
@@ -89,3 +92,13 @@
 "wake_on_proximity" = "Wake on Proximity";
 "wake_without_unlocking" = "Wake without Unlocking";
 "pair_for_mac_hint" = "Pair to stabilize random address tracking →";
+"trust_updater_certificate" = "Trust Updater Certificate…";
+"trust_certificate_first" = "Trust Certificate First…";
+"cert_trust_title" = "Trust the Updater Certificate?";
+"cert_trust_explain" = "BLEUnlock's releases are signed with its own certificate. Trusting it for code signing (one Touch ID / password prompt) lets macOS keep your Bluetooth, Accessibility, and saved-password permissions across updates instead of re-asking every time.\n\nSecurity: after this, any app signed with this certificate is trusted for code signing on this Mac. Only the maintainer holds the private key. To undo later, remove \"BLEUnlock Fork Signing\" in Keychain Access, or run: security delete-certificate -c \"BLEUnlock Fork Signing\"";
+"cert_trust_confirm" = "Trust";
+"cert_trust_done" = "Certificate trusted. Future updates will keep your permissions.";
+"cert_trust_done_reopen" = "Certificate trusted. Choose \"Check for Updates…\" again to install — it will keep your permissions.";
+"cert_trust_failed" = "Could not trust the certificate.";
+"cert_trust_no_resource" = "The bundled certificate could not be found.";
+"cert_already_trusted" = "The updater certificate is already trusted. Updates keep your permissions.";
