@@ -178,6 +178,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     /// Serial queue for ServiceManagement XPC calls to avoid concurrent smd requests.
     let smdQueue = DispatchQueue(label: "com.github.7onnie.BLEUnlock.smd")
     let prefs = UserDefaults.standard
+    var didMigrateLegacyDataThisLaunch = false
     var displaySleep = false
     var systemSleep = false
     var connected = false
@@ -1213,8 +1214,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     func runScript(_ arg: String) {
         guard let directory = try? FileManager.default.url(for: .applicationScriptsDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else { return }
         var file = directory.appendingPathComponent("event")
-        if !FileManager.default.isExecutableFile(atPath: file.path) {
-            // Fall back to script locations of previous bundle identifiers.
+        if !FileManager.default.fileExists(atPath: file.path) {
+            // Fall back to script locations of previous bundle identifiers, but only
+            // when there is truly no script at the new location. An existing but
+            // non-executable file at the new location must not silently fall back
+            // to running a stale legacy script.
             let scriptsRoot = directory.deletingLastPathComponent()
             for legacyBundleIdentifier in legacyMainBundleIdentifiers {
                 let legacyFile = scriptsRoot.appendingPathComponent(legacyBundleIdentifier).appendingPathComponent("event")
@@ -1943,6 +1947,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             }
         }
 
+        didMigrateLegacyDataThisLaunch = true
         prefs.set(true, forKey: legacyBundleIDMigrationKey)
     }
 
@@ -1962,6 +1967,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
 
     func migrateLegacyAppDataIfNeeded() {
         migrateLegacyDefaultsIfNeeded()
+        if didMigrateLegacyDataThisLaunch {
+            // Touch the (possibly legacy) keychain item once now, while the user
+            // is present and the screen is unlocked: reading the old bundle ID's
+            // item can show a one-time consent dialog that must not first appear
+            // during a locked-screen unlock. A successful read re-stores the
+            // password under the new service.
+            _ = fetchPassword()
+        }
     }
     
     @objc func askPassword() {
@@ -2477,7 +2490,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     }
 
     // Clean up ALL legacy login items: old SMLoginItemSetEnabled entries
-    // (both current and jp.sone bundle IDs) and old SMAppService.loginItem
+    // (the current bundle ID and all legacy bundle IDs) and old SMAppService.loginItem
     // registrations that used the Launcher helper instead of mainApp.
     func cleanupAllLegacyLoginItems() {
         let allLauncherIDs = legacyLauncherBundleIdentifiers() + [launcherBundleIdentifier()]
@@ -2534,8 +2547,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             guard let self = self else { return }
             self.cleanupAllLegacyLoginItems()
             if #available(macOS 13.0, *) {
-                let status = SMAppService.mainApp.status
-                let registered = (status == .enabled || status == .requiresApproval)
+                var status = SMAppService.mainApp.status
+                var registered = (status == .enabled || status == .requiresApproval)
+                if self.didMigrateLegacyDataThisLaunch && !registered && self.prefs.bool(forKey: "launchAtLogin") {
+                    // First launch under a new bundle identifier: the BTM record is
+                    // keyed by bundle ID, so carry the migrated launch-at-login
+                    // setting over to a fresh registration instead of letting the
+                    // status sync clobber the pref.
+                    try? SMAppService.mainApp.register()
+                    status = SMAppService.mainApp.status
+                    registered = (status == .enabled || status == .requiresApproval)
+                }
                 if registered != self.prefs.bool(forKey: "launchAtLogin") {
                     self.prefs.set(registered, forKey: "launchAtLogin")
                 }
