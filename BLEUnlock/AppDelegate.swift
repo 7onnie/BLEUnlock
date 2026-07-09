@@ -5,13 +5,21 @@ import UserNotifications
 import IOBluetooth
 
 func t(_ key: String) -> String {
-    return NSLocalizedString(key, comment: "")
+    let localized = NSLocalizedString(key, comment: "")
+    if localized == key,
+       let basePath = Bundle.main.path(forResource: "Base", ofType: "lproj"),
+       let baseBundle = Bundle(path: basePath) {
+        // Missing key in the active localization: fall back to Base instead of
+        // showing the raw key in the UI.
+        return baseBundle.localizedString(forKey: key, value: key, table: nil)
+    }
+    return localized
 }
 
-private let currentAppBundleIdentifier = "com.github.Skyearn.BLEUnlock"
-private let legacyMainBundleIdentifiers = ["jp.sone.BLEUnlock"]
-private let lockNotificationID = "com.github.Skyearn.BLEUnlock.lock"
-private let updateNotificationID = "com.github.Skyearn.BLEUnlock.update"
+private let currentAppBundleIdentifier = "com.github.7onnie.BLEUnlock"
+private let legacyMainBundleIdentifiers = ["com.github.Skyearn.BLEUnlock", "jp.sone.BLEUnlock"]
+private let lockNotificationID = "com.github.7onnie.BLEUnlock.lock"
+private let updateNotificationID = "com.github.7onnie.BLEUnlock.update"
 private let notificationKindKey = "kind"
 private let launcherBundleIDSuffix = ".Launcher"
 private let unlockLogicMenuItemKind = "unlockLogic"
@@ -168,7 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     var lockNowMenuItem: NSMenuItem?
     var deviceMenuItem: NSMenuItem?
     /// Serial queue for ServiceManagement XPC calls to avoid concurrent smd requests.
-    let smdQueue = DispatchQueue(label: "com.github.Skyearn.BLEUnlock.smd")
+    let smdQueue = DispatchQueue(label: "com.github.7onnie.BLEUnlock.smd")
     let prefs = UserDefaults.standard
     var displaySleep = false
     var systemSleep = false
@@ -191,7 +199,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
     var flagsEventMonitor: Any?
     var deviceMaxTitleWidth: [UUID: CGFloat] = [:]
     var automationPermissionPromptedApps: Set<ManagedMediaApp> = []
-    let mediaControlQueue = DispatchQueue(label: "com.github.Skyearn.BLEUnlock.media-control", qos: .userInitiated)
+    let mediaControlQueue = DispatchQueue(label: "com.github.7onnie.BLEUnlock.media-control", qos: .userInitiated)
     var systemWakeTimer: Timer?
     var wakeUnlockTimer: Timer?
     var postUnlockRetryTimer: Timer?
@@ -1204,7 +1212,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
 
     func runScript(_ arg: String) {
         guard let directory = try? FileManager.default.url(for: .applicationScriptsDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else { return }
-        let file = directory.appendingPathComponent("event")
+        var file = directory.appendingPathComponent("event")
+        if !FileManager.default.isExecutableFile(atPath: file.path) {
+            // Fall back to script locations of previous bundle identifiers.
+            let scriptsRoot = directory.deletingLastPathComponent()
+            for legacyBundleIdentifier in legacyMainBundleIdentifiers {
+                let legacyFile = scriptsRoot.appendingPathComponent(legacyBundleIdentifier).appendingPathComponent("event")
+                if FileManager.default.isExecutableFile(atPath: legacyFile.path) {
+                    file = legacyFile
+                    break
+                }
+            }
+        }
         let process = Process()
         process.executableURL = file
         if let r = lastRSSI {
