@@ -20,5 +20,6 @@ jobs:
         swiftc -o /tmp/gateway-tests Tests/GatewayParsingTests/main.swift BLEUnlock/GatewayParsing.swift && /tmp/gateway-tests
         swiftc -o /tmp/updateassets-tests Tests/UpdateAssetsTests/main.swift BLEUnlock/UpdateAssets.swift && /tmp/updateassets-tests
         swiftc -o /tmp/permreport-tests Tests/PermissionReportTests/main.swift BLEUnlock/PermissionReport.swift && /tmp/permreport-tests
+        swiftc -o /tmp/lockdecision-tests Tests/LockDecisionTests/main.swift BLEUnlock/LockDecision.swift && /tmp/lockdecision-tests
     - name: Start xcodebuild test
       run: xcodebuild clean build -project BLEUnlock.xcodeproj -scheme BLEUnlock CODE_SIGNING_ALLOWED=NO
