@@ -655,7 +655,11 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     func resetSignalTimer(for state: MonitoredDeviceState) {
         state.signalTimer?.invalidate()
         let slope = rssiSlope(state.estimatedHistory)
-        let interval = state.estimatedHistory.count >= SLOPE_WINDOW
+        // Only shorten the no-signal timeout in active mode, where reads are ~1 Hz and
+        // regular. In passive mode advertisement gaps are irregular and can exceed the
+        // short grace, which would falsely lock on a weak-but-present device that then
+        // cannot auto-reunlock. Passive mode keeps the full configured timeout.
+        let interval = (state.active && state.estimatedHistory.count >= SLOPE_WINDOW)
             ? signalLossDelay(slope: slope, lastEstimatedRSSI: state.lastRSSI ?? 0, cap: signalTimeout)
             : signalTimeout
         state.signalTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false, block: { [weak self, weak state] _ in
