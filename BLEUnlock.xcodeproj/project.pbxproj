@@ -28,6 +28,7 @@
 		3DD4B669226C1E3700451B7B /* login.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3DD4B668226C1E3700451B7B /* login.framework */; };
 		680CDE71110749891F5AA1E4 /* RSSIDecision.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5D0346CA6A4625F6C40E69D /* RSSIDecision.swift */; };
 		DD4004500000000000000002 /* CertTrust.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4004500000000000000001 /* CertTrust.swift */; };
+		DD4004500000000000000004 /* SigningCertificate.cer in Resources */ = {isa = PBXBuildFile; fileRef = DD4004500000000000000003 /* SigningCertificate.cer */; };
 		CC3003500000000000000002 /* LockDecision.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC3003500000000000000001 /* LockDecision.swift */; };
 		BB2002500000000000000002 /* PermissionReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2002500000000000000001 /* PermissionReport.swift */; };
 		8E6BAB7636D41F51AE698213 /* GatewayParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74D89DC6A5677427FD9C5C11 /* GatewayParsing.swift */; };
@@ -89,6 +90,7 @@
 		B1EFF91622E010F50010DB0A /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		B5D0346CA6A4625F6C40E69D /* RSSIDecision.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RSSIDecision.swift; sourceTree = "<group>"; };
 		DD4004500000000000000001 /* CertTrust.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CertTrust.swift; sourceTree = "<group>"; };
+		DD4004500000000000000003 /* SigningCertificate.cer */ = {isa = PBXFileReference; lastKnownFileType = file; path = SigningCertificate.cer; sourceTree = "<group>"; };
 		CC3003500000000000000001 /* LockDecision.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LockDecision.swift; sourceTree = "<group>"; };
 		BB2002500000000000000001 /* PermissionReport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PermissionReport.swift; sourceTree = "<group>"; };
 		5FDCBAD056B2199119AD43EE /* NetworkMonitor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
@@ -172,6 +174,7 @@
 				3D2FCF07226C99CB007A06E7 /* Images.xcassets */,
 				B5D0346CA6A4625F6C40E69D /* RSSIDecision.swift */,
 				DD4004500000000000000001 /* CertTrust.swift */,
+				DD4004500000000000000003 /* SigningCertificate.cer */,
 				CC3003500000000000000001 /* LockDecision.swift */,
 				BB2002500000000000000001 /* PermissionReport.swift */,
 				74D89DC6A5677427FD9C5C11 /* GatewayParsing.swift */,
@@ -307,6 +310,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3D2FCF08226C99CB007A06E7 /* Images.xcassets in Resources */,
+				DD4004500000000000000004 /* SigningCertificate.cer in Resources */,
 				3D600A37226CC1A40068FB7B /* Localizable.strings in Resources */,
 				3D953797227853E20017D8B9 /* AboutBox.xib in Resources */,
 				3DD4B659226C1C3400451B7B /* MainMenu.xib in Resources */,

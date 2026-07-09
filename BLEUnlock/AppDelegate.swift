@@ -2398,6 +2398,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         
         mainMenu.addItem(withTitle: t("set_password"), action: #selector(askPassword), keyEquivalent: "")
         mainMenu.addItem(withTitle: t("check_permissions"), action: #selector(checkPermissions), keyEquivalent: "")
+        mainMenu.addItem(withTitle: t("trust_updater_certificate"), action: #selector(trustUpdaterCertificateMenu), keyEquivalent: "")
 
         item = mainMenu.addItem(withTitle: t("passive_mode"), action: #selector(togglePassiveMode), keyEquivalent: "")
         item.state = prefs.bool(forKey: "passiveMode") ? .on : .off
@@ -2472,6 +2473,63 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
             }
         }
         return nil
+    }
+
+    /// True if the running app already chains to a trusted anchor — i.e. the
+    /// updater certificate is trusted and TCC will persist grants across updates.
+    func isUpdaterCertTrusted() -> Bool {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        proc.arguments = anchorTrustedArguments(bundlePath: Bundle.main.bundlePath)
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run(); proc.waitUntilExit() } catch { return false }
+        return isBundleTrusted(codesignExitCode: proc.terminationStatus)
+    }
+
+    /// Trusts the bundled public certificate for code signing in the user-domain
+    /// login keychain (triggers a Touch-ID/password prompt). Returns (true, nil)
+    /// on success, (false, message) otherwise. Blocks until the user responds —
+    /// call off the main queue.
+    func trustUpdaterCertificate() -> (ok: Bool, message: String?) {
+        guard let certURL = Bundle.main.url(forResource: "SigningCertificate", withExtension: "cer") else {
+            return (false, t("cert_trust_no_resource"))
+        }
+        let login = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Keychains/login.keychain-db")
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        proc.arguments = addTrustedCertArguments(certPath: certURL.path, loginKeychainPath: login)
+        let errPipe = Pipe()
+        proc.standardError = errPipe
+        do { try proc.run() } catch { return (false, error.localizedDescription) }
+        proc.waitUntilExit()
+        if proc.terminationStatus == 0 { return (true, nil) }
+        let data = errPipe.fileHandleForReading.readDataToEndOfFile()
+        let msg = String(data: data, encoding: .utf8).flatMap { $0.isEmpty ? nil : $0 }
+            ?? "security exited \(proc.terminationStatus)"
+        return (false, msg)
+    }
+
+    @objc func trustUpdaterCertificateMenu() {
+        if isUpdaterCertTrusted() {
+            infoModal(t("cert_already_trusted"))
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = t("cert_trust_title")
+        alert.informativeText = t("cert_trust_explain")
+        alert.window.title = "BLEUnlock"
+        alert.addButton(withTitle: t("cert_trust_confirm"))
+        alert.addButton(withTitle: t("cancel"))
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = self.trustUpdaterCertificate()
+            DispatchQueue.main.async {
+                if result.ok { self.infoModal(t("cert_trust_done")) }
+                else { self.errorModal(t("cert_trust_failed"), info: result.message) }
+            }
+        }
     }
 
     /// Read-only diagnostic: reports the ACTUAL runtime permission state from the
