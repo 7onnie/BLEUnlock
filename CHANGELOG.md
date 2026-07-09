@@ -1,5 +1,9 @@
 # Release Notes
 
+## 1.15.6
+
+- Faster, smarter auto-lock: BLEUnlock now reacts to the *trajectory* of the signal, not just its level. When you walk away and the signal falls off and drops out, the Mac locks within a few seconds instead of waiting the full no-signal timeout; a brief Bluetooth dropout while you are present still waits a short grace period. Unlocking is unchanged. (Active-mode connections only; passive-scan monitoring keeps the configured timeout.)
+
 ## 1.15.5
 
 - Update checks now detect Intel Macs and no longer offer updates there. Upcoming BLEUnlock releases will be built for Apple Silicon only; this is the last version that runs on Intel hardware
