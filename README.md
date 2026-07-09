@@ -10,7 +10,7 @@
   <a href="https://github.com/7onnie/BLEUnlock/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/7onnie/BLEUnlock?sort=semver"></a>
   <a href="https://github.com/7onnie/BLEUnlock/releases"><img alt="Total downloads" src="https://img.shields.io/github/downloads/7onnie/BLEUnlock/total.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/7onnie/BLEUnlock"></a>
-  <img alt="Platform: macOS 10.13+" src="https://img.shields.io/badge/macOS-10.13%2B-blue">
+  <img alt="Platform: macOS 11+ (Apple Silicon)" src="https://img.shields.io/badge/macOS-11%2B%20(Apple%20Silicon)-blue">
   <a href="https://buymeacoffee.com/7onnie"><img alt="Buy me a coffee" src="https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black"></a>
 </p>
 <!-- BADGES:END -->
@@ -55,8 +55,9 @@ For users who need both security and convenience, consider using Apple's built-i
 
 ## Requirements
 
-- A Mac with Bluetooth Low Energy support
-- macOS 10.13 (High Sierra) or later
+- A Mac with Apple Silicon and Bluetooth Low Energy support
+- macOS 11 (Big Sur) or later
+- Intel Macs: v1.15.5 is the last compatible release (newer versions are built for Apple Silicon only)
 - iPhone 5s or newer, Apple Watch (all), or another BLE device that has [static MAC address](#notes-on-mac-address) and transmits signal periodically
 
 ## Installation
