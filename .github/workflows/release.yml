@@ -62,7 +62,24 @@ jobs:
             MARKETING_VERSION="${VERSION}" \
             CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
             CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=NO \
             build
+
+      - name: Verify arm64-only architecture
+        run: |
+          # BUILD-POLICY.md (7onnie/.github): fail if an x86_64 slice slipped in
+          APP_BIN="build/Build/Products/Release/BLEUnlock.app/Contents/MacOS/BLEUnlock"
+          LAUNCHER_BIN="build/Build/Products/Release/BLEUnlock.app/Contents/Library/LoginItems/Launcher.app/Contents/MacOS/Launcher"
+          for BIN in "${APP_BIN}" "${LAUNCHER_BIN}"; do
+            if [ -f "${BIN}" ]; then
+              lipo -info "${BIN}"
+              if lipo -info "${BIN}" | grep -q x86_64; then
+                echo "::error::${BIN} contains an x86_64 slice — arm64-only policy violated"
+                exit 1
+              fi
+            fi
+          done
 
       - name: Code Sign App
         env:
