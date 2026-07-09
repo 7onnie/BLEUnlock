@@ -1,5 +1,9 @@
 # Release Notes
 
+## 1.15.4
+
+- Releases are now signed with a stable self-signed certificate instead of ad-hoc. The code signature no longer changes on every build, so Accessibility/Bluetooth permissions and the saved-password Keychain access survive updates (no more re-approving after each update)
+
 ## 1.15.3
 
 - New "Check Permissions…" menu item: reports the real Accessibility/Bluetooth/Automation/notification/event-script state (the System Settings list can be stale for ad-hoc-signed builds) with guidance and a Settings deeplink
