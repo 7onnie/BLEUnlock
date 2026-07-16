@@ -402,6 +402,19 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     var devices : [UUID : Device] = [:]
     var delegate: BLEDelegate?
     var scanMode = false
+    /// True only while the device-picker menu is actually open. Decoupled from
+    /// `scanMode` (which stays on in the background for UUID-rotation detection).
+    /// Foreign (non-monitored) devices are only GATT-connected while this is true
+    /// — otherwise connecting to every nearby device (e.g. an Apple Pencil) makes
+    /// macOS raise repeated BluetoothUIServer pairing popups in the background.
+    var pickerActive = false
+    /// Foreign devices that require bonding or failed to connect — never retried
+    /// for the rest of this app session, to avoid repeat pairing popups.
+    var foreignConnectSkip: Set<UUID> = []
+    /// Timeout timers for pending foreign device-info connects (macOS `connect()`
+    /// has no timeout of its own).
+    var foreignConnectTimers: [UUID: Timer] = [:]
+    let foreignConnectTimeout: TimeInterval = 10
     var monitoredUUIDs: Set<UUID> = [] {
         didSet {
             macInheritLog("monitoredUUIDs changed: oldCount=\(oldValue.count) newCount=\(monitoredUUIDs.count) uuids=\(monitoredUUIDs.map(\.uuidString).sorted().joined(separator: ", "))")
@@ -484,10 +497,14 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     func startScanning() {
         scanMode = true
+        pickerActive = true
         scanForPeripherals()
     }
 
     func stopScanning() {
+        // The picker menu just closed — stop connecting to foreign devices for
+        // display purposes. (scanMode itself may stay on for UUID rotation.)
+        pickerActive = false
         // Keep scanMode true when devices are monitored so UUID rotations
         // are still detected during background/locked-screen operation.
         if !monitoredUUIDs.isEmpty { return }
@@ -821,6 +838,34 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
 
+    /// Connect to a foreign (non-monitored) peripheral solely to read its
+    /// ManufacturerName/ModelName for display in the device picker. Only ever
+    /// fires while the picker is open, skips devices known to require bonding,
+    /// and arms a timeout so a hanging connect can't linger.
+    func connectForDeviceInfo(_ peripheral: CBPeripheral) {
+        guard pickerActive else { return }
+        guard !foreignConnectSkip.contains(peripheral.identifier) else { return }
+        guard peripheral.state == .disconnected else { return }
+        centralMgr.connect(peripheral, options: nil)
+        foreignConnectTimers[peripheral.identifier]?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: foreignConnectTimeout, repeats: false, block: { [weak self, weak peripheral] _ in
+            guard let self = self, let p = peripheral else { return }
+            if p.state != .connected {
+                self.centralMgr.cancelPeripheralConnection(p)
+            }
+            self.foreignConnectTimers[p.identifier]?.invalidate()
+            self.foreignConnectTimers.removeValue(forKey: p.identifier)
+        })
+        // .common so it still fires while the menu is tracking (eventTracking mode).
+        RunLoop.main.add(timer, forMode: .common)
+        foreignConnectTimers[peripheral.identifier] = timer
+    }
+
+    func clearForeignConnectTimer(_ uuid: UUID) {
+        foreignConnectTimers[uuid]?.invalidate()
+        foreignConnectTimers.removeValue(forKey: uuid)
+    }
+
     func resetScanTimer(device: Device) {
         device.scanTimer?.invalidate()
         device.scanTimer = Timer.scheduledTimer(withTimeInterval: signalTimeout, repeats: false, block: { [weak self, weak device] _ in
@@ -933,7 +978,7 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                             }
                         }
                         
-                        central.connect(peripheral, options: nil)
+                        connectForDeviceInfo(peripheral)
                         device.logNameResolutionIfNeeded(context: "discover:merged")
                     }
                 }
@@ -952,8 +997,8 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                     }
                     
                     devices[peripheral.identifier] = device
-                    central.connect(peripheral, options: nil)
-                    
+                    connectForDeviceInfo(peripheral)
+
                     // Post-hoc MAC correlation: check again now that device.macAddr is set
                     if let mac = device.macAddr, let matched = findKnownDeviceByMAC(newMAC: mac, knownDevices: devices.filter { $0.key != peripheral.identifier }) {
                         // Defer if old UUID still visible and monitored (same logic as discover:merged)
@@ -1025,19 +1070,40 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
                         didConnect peripheral: CBPeripheral)
     {
         peripheral.delegate = self
-        if scanMode {
-            peripheral.discoverServices([DeviceInformation])
-        }
+        clearForeignConnectTimer(peripheral.identifier)
         if monitoringSuspended {
             centralMgr.cancelPeripheralConnection(peripheral)
             return
         }
-        if let state = monitoredState(for: peripheral), !passiveMode {
+        let monitored = monitoredState(for: peripheral)
+        if pickerActive {
+            peripheral.discoverServices([DeviceInformation])
+        } else if monitored == nil {
+            // Foreign connect, but the picker closed before this completed —
+            // nothing to read, so drop the connection instead of leaving it open.
+            centralMgr.cancelPeripheralConnection(peripheral)
+        }
+        if let state = monitored, !passiveMode {
             print("Connected \(state.uuid)")
             state.connectionTimer?.invalidate()
             state.connectionTimer = nil
             peripheral.readRSSI()
         }
+    }
+
+    func centralManager(_ central: CBCentralManager,
+                        didFailToConnect peripheral: CBPeripheral,
+                        error: Error?)
+    {
+        print("Failed to connect \(peripheral.identifier): \(error?.localizedDescription ?? "unknown")")
+        clearForeignConnectTimer(peripheral.identifier)
+        // A foreign connect that fails is almost always a device demanding bonding
+        // (e.g. Apple Pencil). Never retry it this session — that's what produced
+        // the endless pairing popups.
+        if monitoredState(for: peripheral) == nil {
+            foreignConnectSkip.insert(peripheral.identifier)
+        }
+        centralMgr.cancelPeripheralConnection(peripheral)
     }
 
     //MARK:CBCentralManagerDelegate end -
@@ -1078,6 +1144,16 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral,
                     didDiscoverServices error: Error?) {
+        if let error = error {
+            print("discoverServices failed \(peripheral.identifier): \(error.localizedDescription)")
+            // Reading services on a foreign device that requires bonding raises the
+            // macOS pairing popup. Blacklist it so we never connect again this session.
+            if monitoredState(for: peripheral) == nil {
+                foreignConnectSkip.insert(peripheral.identifier)
+                centralMgr.cancelPeripheralConnection(peripheral)
+            }
+            return
+        }
         if let services = peripheral.services {
             for service in services {
                 if service.uuid == DeviceInformation {
