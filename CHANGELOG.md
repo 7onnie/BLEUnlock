@@ -1,5 +1,9 @@
 # Release Notes
 
+## 1.15.9
+
+- Fixed repeated macOS Bluetooth pairing popups ("Bluetooth request from…", e.g. for a nearby Apple Pencil or other device you don't unlock with). BLEUnlock briefly connected to *every* nearby device — even in the background — just to read its name for the picker, which made macOS demand pairing over and over. It now connects to non-selected devices only while the device menu is actually open, adds a connection timeout, and permanently skips any device that demands pairing for the rest of the session. Monitoring of your selected device is unchanged.
+
 ## 1.15.8
 
 - Maintenance build. (Note: trusting the updater certificate makes Accessibility/Bluetooth permissions persist across updates, but the saved-password Keychain item still prompts once per update on self-signed builds — a limitation without an Apple Developer ID.)
