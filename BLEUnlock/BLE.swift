@@ -487,6 +487,22 @@ class BLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         centralMgr = CBCentralManager(delegate: self, queue: nil)
     }
 
+    /// Re-creates the CBCentralManager so TCC registers the app in
+    /// System Settings → Privacy & Security → Bluetooth and shows the system
+    /// prompt while authorization is .notDetermined. Unlike
+    /// recoverAfterPermissionChangeIfNeeded() this ignores scanMode,
+    /// monitoredUUIDs and monitoringSuspended: it must work while monitoring
+    /// is paused at startup. Shares the rate limit to avoid manager churn.
+    func triggerAuthorizationPrompt() {
+        let now = Date().timeIntervalSince1970
+        guard now - lastAuthorizationRefreshAt >= minimumAuthorizationRefreshInterval else { return }
+        lastAuthorizationRefreshAt = now
+        print("Triggering Bluetooth authorization registration")
+        centralMgr.stopScan()
+        centralMgr.delegate = nil
+        centralMgr = CBCentralManager(delegate: self, queue: nil)
+    }
+
     func scanForPeripherals() {
         guard !monitoringSuspended else { return }
         guard !centralMgr.isScanning else { return }
