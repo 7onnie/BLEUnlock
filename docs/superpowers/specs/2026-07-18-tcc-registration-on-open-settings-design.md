@@ -65,7 +65,7 @@ angepasst: Report read-only, Registrierung erst auf Button-Klick.
 - **Bluetooth `.denied` mit fehlendem Listeneintrag** (stale TCC-Eintrag durch
   cdhash-Wechsel alter Builds): wird bewusst nicht repariert — bei `.denied`
   feuert kein neuer Prompt. Manueller Ausweg für Betroffene:
-  `tccutil reset Bluetooth com.github.7onnie.BLEUnlock` (läuft ohne sudo),
+  `tccutil reset BluetoothAlways com.github.7onnie.BLEUnlock` (läuft ohne sudo),
   danach erneut „Einstellungen öffnen". Wird im Changelog dokumentiert.
 - **Doppelklicks / wiederholte Checks:** Das 2-Sekunden-Rate-Limit in
   `triggerAuthorizationPrompt()` verhindert schnelles Neu-Erzeugen des Managers.
@@ -79,7 +79,7 @@ angepasst: Report read-only, Registrierung erst auf Button-Klick.
 
 1. Testvorbereitung auf dem Entwickler-Mac:
    `tccutil reset Accessibility com.github.7onnie.BLEUnlock` und
-   `tccutil reset Bluetooth com.github.7onnie.BLEUnlock`.
+   `tccutil reset BluetoothAlways com.github.7onnie.BLEUnlock`.
 2. Build starten, „Berechtigungen prüfen" → beide als fehlend gemeldet.
 3. „Einstellungen öffnen" klicken → AX-Prompt und Bluetooth-Prompt erscheinen;
    in beiden Privacy-Panes existiert jetzt ein BLEUnlock-Eintrag, Haken setzbar.
