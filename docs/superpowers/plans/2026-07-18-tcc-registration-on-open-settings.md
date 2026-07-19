@@ -171,7 +171,7 @@ Insert under `# Release Notes` (above `## 1.15.9`):
 ```markdown
 ## 1.15.10
 
-- Check Permissions: clicking **Open Settings** now registers BLEUnlock with macOS first, so the app actually appears in System Settings → Privacy & Security → Accessibility and → Bluetooth and the checkbox can be enabled (previously both lists could be empty with no way to add the app — the Bluetooth pane has no "+" button). If the Bluetooth entry is still missing because an old build's stale permission record blocks it, run `tccutil reset Bluetooth com.github.7onnie.BLEUnlock` (no sudo needed) and click Open Settings again.
+- Check Permissions: clicking **Open Settings** now registers BLEUnlock with macOS first, so the app actually appears in System Settings → Privacy & Security → Accessibility and → Bluetooth and the checkbox can be enabled (previously both lists could be empty with no way to add the app — the Bluetooth pane has no "+" button). If the Bluetooth entry is still missing because an old build's stale permission record blocks it, run `tccutil reset BluetoothAlways com.github.7onnie.BLEUnlock` (no sudo needed) and click Open Settings again.
 ```
 
 - [ ] **Step 2: Commit and push**
@@ -185,7 +185,7 @@ git push
 - [ ] **Step 3: Manual end-to-end verification (developer Mac)**
 
 1. Reset TCC so both entries are missing (simulates the reported state):
-   `tccutil reset Accessibility com.github.7onnie.BLEUnlock && tccutil reset Bluetooth com.github.7onnie.BLEUnlock`
+   `tccutil reset Accessibility com.github.7onnie.BLEUnlock && tccutil reset BluetoothAlways com.github.7onnie.BLEUnlock`
 2. Build and launch the app from the built product (quit any running instance first).
 3. Menu → Check Permissions → both Accessibility and Bluetooth report as failing.
 4. Click "Open Settings". Expected: app comes to front, Accessibility system prompt appears (entry appears in the Bedienungshilfen list even if dismissed), Bluetooth system prompt appears, then the Privacy pane opens.
