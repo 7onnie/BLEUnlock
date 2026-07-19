@@ -2557,11 +2557,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         }
     }
 
-    /// Read-only diagnostic: reports the ACTUAL runtime permission state from the
-    /// real APIs (Accessibility, Bluetooth, Automation, Notifications, event script),
-    /// as opposed to what System Settings shows. Because this app is ad-hoc signed,
-    /// its cdhash changes on every build, so a stale System Settings entry can look
-    /// wrong even though the running process already holds the grant.
+    /// Diagnostic report of the ACTUAL runtime permission state from the real APIs
+    /// (Accessibility, Bluetooth, Automation, Notifications, event script), as
+    /// opposed to what System Settings shows — a stale System Settings entry can
+    /// look wrong even though the running process already holds the grant. The
+    /// report itself is read-only; only clicking "Open Settings" actively registers
+    /// the app with TCC (triggers the Accessibility/Bluetooth prompts) so the
+    /// entries exist in the Privacy panes and the user can enable them.
     @objc func checkPermissions() {
         let ax = checkAccessibility(showPrompt: false)
         let axItem = PermissionItem(name: t("perm_accessibility"), state: ax ? .ok : .fail, detail: ax ? "" : t("perm_accessibility_denied"))
@@ -2660,6 +2662,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemVa
         NSApp.activate(ignoringOtherApps: true)
         let response = alert.runModal()
         if let pane = settingsPane, response == .alertSecondButtonReturn {
+            // Register the app with TCC before opening the pane, so the entries
+            // actually exist there. Activate first: as an LSUIElement app the
+            // system prompts otherwise appear hidden behind other windows.
+            // Both registrations run regardless of which pane opens, so one
+            // click creates every missing entry.
+            NSApp.activate(ignoringOtherApps: true)
+            if !ax {
+                checkAccessibility(showPrompt: true)
+            }
+            if #available(macOS 10.15, *), ble.centralMgr.authorization == .notDetermined {
+                ble.triggerAuthorizationPrompt()
+            }
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
                 NSWorkspace.shared.open(url)
             }
