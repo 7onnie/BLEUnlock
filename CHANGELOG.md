@@ -1,5 +1,9 @@
 # Release Notes
 
+## 1.15.10
+
+- Check Permissions: clicking **Open Settings** now registers BLEUnlock with macOS first, so the app actually appears in System Settings → Privacy & Security → Accessibility and → Bluetooth and the checkbox can be enabled (previously both lists could be empty with no way to add the app — the Bluetooth pane has no "+" button). If the Bluetooth entry is still missing because an old build's stale permission record blocks it, run `tccutil reset Bluetooth com.github.7onnie.BLEUnlock` (no sudo needed) and click Open Settings again.
+
 ## 1.15.9
 
 - Fixed repeated macOS Bluetooth pairing popups ("Bluetooth request from…", e.g. for a nearby Apple Pencil or other device you don't unlock with). BLEUnlock briefly connected to *every* nearby device — even in the background — just to read its name for the picker, which made macOS demand pairing over and over. It now connects to non-selected devices only while the device menu is actually open, adds a connection timeout, and permanently skips any device that demands pairing for the rest of the session. Monitoring of your selected device is unchanged.
