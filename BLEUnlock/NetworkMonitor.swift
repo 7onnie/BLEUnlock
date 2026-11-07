@@ -3,7 +3,7 @@ import SystemConfiguration
 
 /// Watches the default network and decides whether BLEUnlock should be paused on the
 /// current ("home") network. The network is identified permission-free by the default
-/// gateway's MAC address (route -> ping -> arp). No CoreWLAN, no Location permission.
+/// gateway's MAC address (configd's ARP-verified router MAC, fallback route -> ping -> arp). No CoreWLAN, no Location permission.
 final class NetworkMonitor {
     static let allowlistKey = "pausedGatewayMACs"
 
@@ -40,8 +40,11 @@ final class NetworkMonitor {
             return
         }
         let keys = ["State:/Network/Global/IPv4", "State:/Network/Global/IPv6"] as CFArray
-        // These are exact keys, so they belong in the `keys` argument (not `patterns`).
-        SCDynamicStoreSetNotificationKeys(store, keys, nil)
+        // configd publishes ARPResolvedHardwareAddress in the per-service IPv4 dict, often
+        // shortly AFTER the global key changed — watch it too so a late ARP verify re-evaluates.
+        let patterns = ["State:/Network/Service/[^/]+/IPv4"] as CFArray
+        // Exact keys go in `keys`, regexes in `patterns`.
+        SCDynamicStoreSetNotificationKeys(store, keys, patterns)
         if let source = SCDynamicStoreCreateRunLoopSource(nil, store, 0) {
             CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         }
@@ -68,6 +71,11 @@ final class NetworkMonitor {
 
     /// Resolve the current default gateway's MAC. BLOCKING — never call on the main queue.
     func resolveGatewayMAC() -> String? {
+        // macOS 27+ hides the ARP table from non-root processes (even with Local Network
+        // permission), so ask configd first and keep route/ping/arp as the fallback.
+        if let mac = gatewayMACFromDynamicStore() {
+            return mac
+        }
         guard let route = runProcess("/sbin/route", ["-n", "get", "default"]),
               let gatewayIP = parseDefaultGatewayIP(routeOutput: route) else {
             return nil
@@ -81,6 +89,16 @@ final class NetworkMonitor {
             if attempt < 2 { usleep(150_000) } // let ARP settle, then retry
         }
         return nil
+    }
+
+    /// Router MAC as ARP-verified by configd for the primary IPv4 service, or nil.
+    private func gatewayMACFromDynamicStore() -> String? {
+        guard let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any],
+              let service = global["PrimaryService"] as? String,
+              let ipv4 = SCDynamicStoreCopyValue(nil, "State:/Network/Service/\(service)/IPv4" as CFString) as? [String: Any] else {
+            return nil
+        }
+        return parseGatewayMAC(ipv4State: ipv4)
     }
 
     @discardableResult

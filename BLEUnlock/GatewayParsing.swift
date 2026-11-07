@@ -40,6 +40,18 @@ func parseGatewayMAC(arpOutput: String) -> String? {
     return normalizeMAC(macToken)
 }
 
+/// Extracts the router MAC from a SystemConfiguration `State:/Network/Service/<id>/IPv4`
+/// dictionary. configd ARP-verifies the router and publishes `ARPResolvedHardwareAddress`;
+/// this is readable without root, unlike the ARP table on macOS 27+. Only trusted when the
+/// ARP-resolved IP matches the current `Router`, so a stale entry is never used.
+func parseGatewayMAC(ipv4State: [String: Any]) -> String? {
+    guard let router = ipv4State["Router"] as? String,
+          let resolvedIP = ipv4State["ARPResolvedIPAddress"] as? String,
+          resolvedIP == router,
+          let mac = ipv4State["ARPResolvedHardwareAddress"] as? String else { return nil }
+    return normalizeMAC(mac)
+}
+
 /// Pause state with sticky behaviour: an unresolved MAC keeps the previous state, so a
 /// transient ARP/route hiccup does not flip the pause off (or on) spuriously.
 func computePauseState(resolvedMAC: String?, allowlist: Set<String>, previous: Bool) -> Bool {
